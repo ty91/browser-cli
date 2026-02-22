@@ -7,6 +7,7 @@ import { writeDiagnostic, writeResponse, type OutputFormat } from './output.js';
 import { registerSessionCommands } from './commands/session.js';
 import { registerDaemonCommands } from './commands/daemon.js';
 import { registerPageCommands } from './commands/page.js';
+import { registerTabCommands } from './commands/tab.js';
 import { registerObserveCommands } from './commands/observe.js';
 import { registerElementCommands } from './commands/element.js';
 import { registerInputCommands } from './commands/input.js';
@@ -99,6 +100,7 @@ export const createProgram = (): Command => {
 
   registerSessionCommands(program, getContext, onResponse);
   registerDaemonCommands(program, getContext, onResponse);
+  registerTabCommands(program, getContext, onResponse);
   registerPageCommands(program, getContext, onResponse);
   registerObserveCommands(program, getContext, onResponse);
   registerElementCommands(program, getContext, onResponse);
@@ -147,6 +149,8 @@ export const createProgram = (): Command => {
           command: 'browser',
           examples: [
             'browser start',
+            'browser tabs',
+            'browser tab new',
             'browser page open --url https://example.com',
             'browser observe state',
             'browser runtime eval --function "() => document.title"',
