@@ -1,8 +1,6 @@
 import type { Command } from 'commander';
 
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
-import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
-import { AppError } from '../../../shared/errors/AppError.js';
 import { sendDaemonCommand, type CommandContext } from './common.js';
 
 export const parseHeadless = (opts: { headless?: boolean; headed?: boolean }): boolean => {
@@ -17,9 +15,7 @@ export const registerSessionCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const session = root.command('session').description('Manage context-bound browser sessions');
-
-  session
+  root
     .command('start')
     .description('Start or reuse current context session')
     .option('--headless', 'Run in headless mode')
@@ -28,9 +24,9 @@ export const registerSessionCommands = (
     .action(async (opts: { headless?: boolean; headed?: boolean; describe?: boolean }) => {
       if (opts.describe) {
         await onResponse(true, {
-          command: 'session start',
+          command: 'start',
           payload: { headless: 'boolean (default: false)' },
-          examples: ['cdt session start', 'cdt session start --headless --share-group qa']
+          examples: ['browser start', 'browser start --headless --share-group qa']
         });
         return;
       }
@@ -42,16 +38,16 @@ export const registerSessionCommands = (
       await onResponse(response.ok, response);
     });
 
-  session
+  root
     .command('status')
     .description('Get session status for current context')
     .option('--describe', 'Show command schema and examples')
     .action(async (opts: { describe?: boolean }) => {
       if (opts.describe) {
         await onResponse(true, {
-          command: 'session status',
+          command: 'status',
           payload: {},
-          examples: ['cdt session status --output json']
+          examples: ['browser status --output json']
         });
         return;
       }
@@ -61,16 +57,16 @@ export const registerSessionCommands = (
       await onResponse(response.ok, response);
     });
 
-  session
+  root
     .command('stop')
     .description('Stop current context session')
     .option('--describe', 'Show command schema and examples')
     .action(async (opts: { describe?: boolean }) => {
       if (opts.describe) {
         await onResponse(true, {
-          command: 'session stop',
+          command: 'stop',
           payload: {},
-          examples: ['cdt session stop --output json']
+          examples: ['browser stop --output json']
         });
         return;
       }
@@ -79,11 +75,4 @@ export const registerSessionCommands = (
       const response = await sendDaemonCommand(ctx, IPC_OP.SESSION_STOP, {});
       await onResponse(response.ok, response);
     });
-
-  session.action(async () => {
-    throw new AppError('Missing session subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt session --help', 'Run: cdt session start --describe']
-    });
-  });
 };

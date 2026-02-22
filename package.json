@@ -4,7 +4,7 @@
   "description": "CLI browser control with daemon/IPC session core",
   "type": "module",
   "bin": {
-    "cdt": "dist/bin/cdt.js",
+    "browser": "dist/bin/cdt.js",
     "cdt-daemon": "dist/bin/cdt-daemon.js"
   },
   "scripts": {

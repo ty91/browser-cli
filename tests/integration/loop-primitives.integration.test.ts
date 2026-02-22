@@ -150,7 +150,7 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
     };
 
     try {
-      const start = await runCli(['session', 'start', '--headless', '--output', 'json'], env, cwd);
+      const start = await runCli(['start', '--headless', '--output', 'json'], env, cwd);
       expect(start.code).toBe(0);
 
       const open = await runCli(['page', 'open', '--url', fixture.origin, '--output', 'json'], env, cwd);
@@ -287,7 +287,7 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
       expect(shotData.width === null || shotData.width > 0).toBe(true);
       expect(shotData.height === null || shotData.height > 0).toBe(true);
     } finally {
-      await runCli(['session', 'stop', '--output', 'json'], env, cwd);
+      await runCli(['stop', '--output', 'json'], env, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
       await fixture.close();
       await rm(tempHome, { recursive: true, force: true });

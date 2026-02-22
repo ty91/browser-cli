@@ -92,7 +92,7 @@ export class SessionService {
       throw new AppError('No session exists for current context.', {
         code: ERROR_CODE.SESSION_NOT_FOUND,
         details: { contextKeyHash: resolved.contextKeyHash },
-        suggestions: ['Start one first: cdt session start --output json']
+        suggestions: ['Start one first: browser start --output json']
       });
     }
 
@@ -119,7 +119,7 @@ export class SessionService {
         throw new AppError('No running session for current context.', {
           code: ERROR_CODE.SESSION_NOT_FOUND,
           details: { contextKeyHash: resolved.contextKeyHash },
-          suggestions: ['Start one first: cdt session start --output json']
+          suggestions: ['Start one first: browser start --output json']
         });
       }
 
@@ -141,7 +141,7 @@ export class SessionService {
       throw new AppError('No session exists for current context.', {
         code: ERROR_CODE.SESSION_NOT_FOUND,
         details: { contextKeyHash: resolved.contextKeyHash },
-        suggestions: ['Start one first: cdt session start --output json']
+        suggestions: ['Start one first: browser start --output json']
       });
     }
 

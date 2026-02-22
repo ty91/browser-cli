@@ -1526,7 +1526,7 @@ export class BrowserSlotManager {
       throw new AppError('Session is not running for this context.', {
         code: ERROR_CODE.SESSION_NOT_FOUND,
         details: { contextKeyHash },
-        suggestions: ['Run: cdt session start --output json']
+        suggestions: ['Run: browser start --output json']
       });
     }
 

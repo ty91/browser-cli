@@ -57,7 +57,7 @@ export const createProgram = (): Command => {
   const program = new Command();
 
   program
-    .name('cdt')
+    .name('browser')
     .description('Chrome DevTools style browser control CLI')
     .option('--output <format>', 'output format: json|text', 'json')
     .option('--share-group <name>', 'explicit context sharing group')
@@ -144,13 +144,13 @@ export const createProgram = (): Command => {
         id: 'root-describe',
         ok: true,
         data: {
-          command: 'cdt',
+          command: 'browser',
           examples: [
-            'cdt session start',
-            'cdt page open --url https://example.com',
-            'cdt observe state',
-            'cdt runtime eval --function "() => document.title"',
-            'cdt trace start --file ./trace.json'
+            'browser start',
+            'browser page open --url https://example.com',
+            'browser observe state',
+            'browser runtime eval --function "() => document.title"',
+            'browser trace start --file ./trace.json'
           ]
         },
         meta: { durationMs: 0 }
@@ -162,7 +162,7 @@ export const createProgram = (): Command => {
       id: 'root-help',
       ok: true,
       data: {
-        message: 'Run cdt --help for available commands.'
+        message: 'Run browser --help for available commands.'
       },
       meta: { durationMs: 0 }
     });

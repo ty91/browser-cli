@@ -19,7 +19,7 @@ export class LeaseManager {
       throw new AppError('Session lease missing for context.', {
         code: ERROR_CODE.CONTEXT_LEASE_EXPIRED,
         details: { contextKeyHash },
-        suggestions: ['Restart the session: cdt session start --output json']
+        suggestions: ['Restart the session: browser start --output json']
       });
     }
 
@@ -28,7 +28,7 @@ export class LeaseManager {
       throw new AppError('Session lease has expired.', {
         code: ERROR_CODE.CONTEXT_LEASE_EXPIRED,
         details: { contextKeyHash, leaseExpiresAt: lease.leaseExpiresAt },
-        suggestions: ['Restart the session: cdt session start --output json']
+        suggestions: ['Restart the session: browser start --output json']
       });
     }
 

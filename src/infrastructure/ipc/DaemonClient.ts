@@ -112,7 +112,7 @@ export class DaemonClient {
     throw new AppError('Failed to start broker daemon.', {
       code: ERROR_CODE.DAEMON_UNAVAILABLE,
       details: { socketPath: this.socketPath, timeoutMs },
-      suggestions: ['Check daemon log and retry: cdt session start --output json']
+      suggestions: ['Check daemon log and retry: browser start --output json']
     });
   }
 
