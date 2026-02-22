@@ -21,7 +21,6 @@ type GlobalOptions = {
   shareGroup?: string;
   contextId?: string;
   timeout?: string;
-  list?: boolean;
   describe?: boolean;
   debug?: boolean;
   home?: string;
@@ -59,7 +58,6 @@ export const createProgram = (): Command => {
     .option('--context-id <id>', 'manual context routing override')
     .option('--timeout <ms>', 'request timeout in ms')
     .option('--home <path>', 'override cdt home directory (default: ~/.cdt)')
-    .option('--list', 'list available resources or subcommands')
     .option('--describe', 'show schema/examples for command')
     .option('--debug', 'print diagnostics to stderr for errors');
 
@@ -101,7 +99,7 @@ export const createProgram = (): Command => {
   registerRuntimeCommands(program, getContext, onResponse);
   registerCaptureCommands(program, getContext, onResponse);
 
-  program.command('errors').option('--list').action(async () => {
+  program.command('errors').action(async () => {
     await onResponse(true, {
       id: 'errors-list',
       ok: true,
@@ -125,18 +123,6 @@ export const createProgram = (): Command => {
 
   program.action(async () => {
     const options = program.opts<GlobalOptions>();
-    if (options.list) {
-      await onResponse(true, {
-        id: 'root-list',
-        ok: true,
-        data: {
-          resources: ['session', 'daemon', 'page', 'element', 'input', 'runtime', 'capture', 'errors']
-        },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
     if (options.describe) {
       await onResponse(true, {
         id: 'root-describe',
@@ -158,7 +144,7 @@ export const createProgram = (): Command => {
       id: 'root-help',
       ok: true,
       data: {
-        message: 'Run cdt --list or cdt --help for available commands.'
+        message: 'Run cdt --help for available commands.'
       },
       meta: { durationMs: 0 }
     });

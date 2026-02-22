@@ -412,7 +412,7 @@ export class BrokerDaemon {
       throw new AppError(`Unsupported operation: ${request.op}`, {
         code: ERROR_CODE.VALIDATION_ERROR,
         details: { op: request.op },
-        suggestions: ['Run: cdt --list']
+        suggestions: ['Run: cdt --help']
       });
     } catch (error) {
       const appError =

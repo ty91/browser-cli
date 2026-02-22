@@ -26,7 +26,7 @@ export const registerPageCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const page = root.command('page').description('Page operations').option('--list');
+  const page = root.command('page').description('Page operations');
 
   page
     .command('open')
@@ -135,22 +135,9 @@ export const registerPageCommands = (
     });
 
   page.action(async () => {
-    const command = page.optsWithGlobals() as { list?: boolean };
-    if (command.list) {
-      await onResponse(true, {
-        id: 'page-list-commands',
-        ok: true,
-        data: { commands: ['open', 'list', 'use', 'navigate', 'wait-text'] },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
-    await onResponse(true, {
-      id: 'page-help',
-      ok: true,
-      data: { commands: ['open', 'list', 'use', 'navigate', 'wait-text'] },
-      meta: { durationMs: 0 }
+    throw new AppError('Missing page subcommand.', {
+      code: ERROR_CODE.VALIDATION_ERROR,
+      suggestions: ['Run: cdt page --help']
     });
   });
 };

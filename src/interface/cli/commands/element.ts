@@ -26,7 +26,7 @@ export const registerElementCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const element = root.command('element').description('Element interactions').option('--list');
+  const element = root.command('element').description('Element interactions');
 
   element
     .command('fill')
@@ -57,22 +57,9 @@ export const registerElementCommands = (
     });
 
   element.action(async () => {
-    const command = element.optsWithGlobals() as { list?: boolean };
-    if (command.list) {
-      await onResponse(true, {
-        id: 'element-list-commands',
-        ok: true,
-        data: { commands: ['fill', 'click'] },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
-    await onResponse(true, {
-      id: 'element-help',
-      ok: true,
-      data: { commands: ['fill', 'click'] },
-      meta: { durationMs: 0 }
+    throw new AppError('Missing element subcommand.', {
+      code: ERROR_CODE.VALIDATION_ERROR,
+      suggestions: ['Run: cdt element --help']
     });
   });
 };

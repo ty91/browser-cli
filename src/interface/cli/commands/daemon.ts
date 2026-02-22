@@ -2,6 +2,8 @@ import type { Command } from 'commander';
 
 import { DaemonClient } from '../../../infrastructure/ipc/DaemonClient.js';
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
+import { AppError } from '../../../shared/errors/AppError.js';
+import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
 import { toDaemonContext, type CommandContext } from './common.js';
 
 export const registerDaemonCommands = (
@@ -9,7 +11,7 @@ export const registerDaemonCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const daemon = root.command('daemon').description('Broker daemon lifecycle').option('--list');
+  const daemon = root.command('daemon').description('Broker daemon lifecycle');
 
   daemon
     .command('status')
@@ -61,22 +63,9 @@ export const registerDaemonCommands = (
     });
 
   daemon.action(async () => {
-    const command = daemon.optsWithGlobals() as { list?: boolean };
-    if (command.list) {
-      await onResponse(true, {
-        id: 'daemon-list',
-        ok: true,
-        data: { commands: ['start', 'status', 'stop'] },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
-    await onResponse(true, {
-      id: 'daemon-help',
-      ok: true,
-      data: { commands: ['start', 'status', 'stop'] },
-      meta: { durationMs: 0 }
+    throw new AppError('Missing daemon subcommand.', {
+      code: ERROR_CODE.VALIDATION_ERROR,
+      suggestions: ['Run: cdt daemon --help']
     });
   });
 };

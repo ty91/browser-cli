@@ -26,7 +26,7 @@ export const registerRuntimeCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const runtime = root.command('runtime').description('Script execution').option('--list');
+  const runtime = root.command('runtime').description('Script execution');
 
   runtime
     .command('eval')
@@ -42,22 +42,9 @@ export const registerRuntimeCommands = (
     });
 
   runtime.action(async () => {
-    const command = runtime.optsWithGlobals() as { list?: boolean };
-    if (command.list) {
-      await onResponse(true, {
-        id: 'runtime-list-commands',
-        ok: true,
-        data: { commands: ['eval'] },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
-    await onResponse(true, {
-      id: 'runtime-help',
-      ok: true,
-      data: { commands: ['eval'] },
-      meta: { durationMs: 0 }
+    throw new AppError('Missing runtime subcommand.', {
+      code: ERROR_CODE.VALIDATION_ERROR,
+      suggestions: ['Run: cdt runtime --help']
     });
   });
 };

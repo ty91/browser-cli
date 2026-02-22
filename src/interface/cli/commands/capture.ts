@@ -26,7 +26,7 @@ export const registerCaptureCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const capture = root.command('capture').description('Capture page artifacts').option('--list');
+  const capture = root.command('capture').description('Capture page artifacts');
 
   capture
     .command('snapshot')
@@ -40,22 +40,9 @@ export const registerCaptureCommands = (
     });
 
   capture.action(async () => {
-    const command = capture.optsWithGlobals() as { list?: boolean };
-    if (command.list) {
-      await onResponse(true, {
-        id: 'capture-list-commands',
-        ok: true,
-        data: { commands: ['snapshot'] },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
-    await onResponse(true, {
-      id: 'capture-help',
-      ok: true,
-      data: { commands: ['snapshot'] },
-      meta: { durationMs: 0 }
+    throw new AppError('Missing capture subcommand.', {
+      code: ERROR_CODE.VALIDATION_ERROR,
+      suggestions: ['Run: cdt capture --help']
     });
   });
 };

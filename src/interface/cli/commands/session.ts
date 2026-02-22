@@ -17,7 +17,7 @@ export const registerSessionCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const session = root.command('session').description('Manage context-bound browser sessions').option('--list');
+  const session = root.command('session').description('Manage context-bound browser sessions');
 
   session
     .command('start')
@@ -81,20 +81,9 @@ export const registerSessionCommands = (
     });
 
   session.action(async () => {
-    const command = session.optsWithGlobals() as { list?: boolean };
-    if (command.list) {
-      await onResponse(true, {
-        id: 'session-list',
-        ok: true,
-        data: { commands: ['start', 'status', 'stop'] },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
-    throw new AppError('Missing session subcommand. Use --list to inspect available commands.', {
+    throw new AppError('Missing session subcommand.', {
       code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt session --list', 'Run: cdt session start --describe']
+      suggestions: ['Run: cdt session --help', 'Run: cdt session start --describe']
     });
   });
 };

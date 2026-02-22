@@ -26,7 +26,7 @@ export const registerInputCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const input = root.command('input').description('Keyboard input').option('--list');
+  const input = root.command('input').description('Keyboard input');
 
   input
     .command('key')
@@ -42,22 +42,9 @@ export const registerInputCommands = (
     });
 
   input.action(async () => {
-    const command = input.optsWithGlobals() as { list?: boolean };
-    if (command.list) {
-      await onResponse(true, {
-        id: 'input-list-commands',
-        ok: true,
-        data: { commands: ['key'] },
-        meta: { durationMs: 0 }
-      });
-      return;
-    }
-
-    await onResponse(true, {
-      id: 'input-help',
-      ok: true,
-      data: { commands: ['key'] },
-      meta: { durationMs: 0 }
+    throw new AppError('Missing input subcommand.', {
+      code: ERROR_CODE.VALIDATION_ERROR,
+      suggestions: ['Run: cdt input --help']
     });
   });
 };
