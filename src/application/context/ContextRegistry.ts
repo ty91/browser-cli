@@ -23,7 +23,12 @@ export class ContextRegistry {
 
   public async markRunning(
     resolved: ResolvedContext,
-    options: { headless: boolean; chromePid?: number | null; debugPort?: number | null }
+    options: {
+      headless: boolean;
+      chromePid?: number | null;
+      debugPort?: number | null;
+      currentPageId?: number | null;
+    }
   ): Promise<SessionMetadata> {
     const now = new Date().toISOString();
     const current = await this.getMetadata(resolved.contextKeyHash);
@@ -38,7 +43,7 @@ export class ContextRegistry {
       status: 'running',
       chromePid: options.chromePid ?? current?.chromePid ?? null,
       debugPort: options.debugPort ?? current?.debugPort ?? null,
-      currentPageId: current?.currentPageId ?? null,
+      currentPageId: options.currentPageId ?? current?.currentPageId ?? null,
       headless: options.headless,
       lastSeenAt: now
     };
@@ -61,6 +66,27 @@ export class ContextRegistry {
       status: 'stopped',
       updatedAt: now,
       stoppedAt: now,
+      lastSeenAt: now
+    };
+
+    await AtomicJsonFile.write(resolveContextMetadataPath(contextKeyHash, this.homeDir), next);
+    return next;
+  }
+
+  public async updateCurrentPage(
+    contextKeyHash: string,
+    currentPageId: number | null
+  ): Promise<SessionMetadata | null> {
+    const current = await this.getMetadata(contextKeyHash);
+    if (!current) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const next: SessionMetadata = {
+      ...current,
+      currentPageId,
+      updatedAt: now,
       lastSeenAt: now
     };
 

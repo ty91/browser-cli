@@ -6,6 +6,11 @@ import { mapExitCode, toFailureEnvelope } from './errors.js';
 import { writeDiagnostic, writeResponse, type OutputFormat } from './output.js';
 import { registerSessionCommands } from './commands/session.js';
 import { registerDaemonCommands } from './commands/daemon.js';
+import { registerPageCommands } from './commands/page.js';
+import { registerElementCommands } from './commands/element.js';
+import { registerInputCommands } from './commands/input.js';
+import { registerRuntimeCommands } from './commands/runtime.js';
+import { registerCaptureCommands } from './commands/capture.js';
 
 export type ProgramResult = {
   exitCode: number;
@@ -90,6 +95,11 @@ export const createProgram = (): Command => {
 
   registerSessionCommands(program, getContext, onResponse);
   registerDaemonCommands(program, getContext, onResponse);
+  registerPageCommands(program, getContext, onResponse);
+  registerElementCommands(program, getContext, onResponse);
+  registerInputCommands(program, getContext, onResponse);
+  registerRuntimeCommands(program, getContext, onResponse);
+  registerCaptureCommands(program, getContext, onResponse);
 
   program.command('errors').option('--list').action(async () => {
     await onResponse(true, {
@@ -120,7 +130,7 @@ export const createProgram = (): Command => {
         id: 'root-list',
         ok: true,
         data: {
-          resources: ['session', 'daemon', 'errors']
+          resources: ['session', 'daemon', 'page', 'element', 'input', 'runtime', 'capture', 'errors']
         },
         meta: { durationMs: 0 }
       });
@@ -133,7 +143,11 @@ export const createProgram = (): Command => {
         ok: true,
         data: {
           command: 'cdt',
-          examples: ['cdt session start', 'cdt session status --output text', 'cdt daemon stop']
+          examples: [
+            'cdt session start',
+            'cdt page open --url https://example.com',
+            'cdt runtime eval --function "() => document.title"'
+          ]
         },
         meta: { durationMs: 0 }
       });

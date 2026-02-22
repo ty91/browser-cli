@@ -8,6 +8,8 @@ export const mapExitCode = (errorCode: string): number => {
       return 2;
     case ERROR_CODE.SESSION_NOT_FOUND:
     case ERROR_CODE.PAGE_NOT_FOUND:
+    case ERROR_CODE.ELEMENT_NOT_FOUND:
+    case ERROR_CODE.NETWORK_REQUEST_NOT_FOUND:
       return 3;
     case ERROR_CODE.TIMEOUT:
       return 4;

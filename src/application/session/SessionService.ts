@@ -16,6 +16,9 @@ export type SessionCommandInput = {
 
 export type SessionStartInput = SessionCommandInput & {
   headless?: boolean;
+  chromePid?: number | null;
+  debugPort?: number | null;
+  currentPageId?: number | null;
 };
 
 export type SessionStartResult = {
@@ -35,6 +38,11 @@ export type SessionStatusResult = {
 };
 
 export type SessionStopResult = {
+  context: ResolvedContext;
+  session: SessionMetadata;
+};
+
+export type SessionTouchResult = {
   context: ResolvedContext;
   session: SessionMetadata;
 };
@@ -60,8 +68,9 @@ export class SessionService {
 
       const session = await this.registry.markRunning(resolved, {
         headless,
-        chromePid: existing?.chromePid ?? null,
-        debugPort: existing?.debugPort ?? null
+        chromePid: input.chromePid ?? existing?.chromePid ?? null,
+        debugPort: input.debugPort ?? existing?.debugPort ?? null,
+        currentPageId: input.currentPageId ?? existing?.currentPageId ?? null
       });
       await this.leaseManager.touch(resolved.contextKeyHash, input.caller.pid);
 
@@ -123,5 +132,29 @@ export class SessionService {
     } finally {
       await release();
     }
+  }
+
+  public async touch(input: SessionCommandInput): Promise<SessionTouchResult> {
+    const resolved = this.resolver.resolve(input);
+    const session = await this.registry.getMetadata(resolved.contextKeyHash);
+    if (!session) {
+      throw new AppError('No session exists for current context.', {
+        code: ERROR_CODE.SESSION_NOT_FOUND,
+        details: { contextKeyHash: resolved.contextKeyHash },
+        suggestions: ['Start one first: cdt session start --output json']
+      });
+    }
+
+    await this.leaseManager.touch(resolved.contextKeyHash, input.caller.pid);
+
+    return { context: resolved, session };
+  }
+
+  public async updateCurrentPage(
+    input: SessionCommandInput,
+    currentPageId: number | null
+  ): Promise<SessionMetadata | null> {
+    const resolved = this.resolver.resolve(input);
+    return this.registry.updateCurrentPage(resolved.contextKeyHash, currentPageId);
   }
 }

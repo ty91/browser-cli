@@ -8,7 +8,17 @@ export const IPC_OP = {
   DAEMON_STATUS: 'daemon.status',
   SESSION_START: 'session.start',
   SESSION_STATUS: 'session.status',
-  SESSION_STOP: 'session.stop'
+  SESSION_STOP: 'session.stop',
+  PAGE_OPEN: 'page.open',
+  PAGE_LIST: 'page.list',
+  PAGE_USE: 'page.use',
+  PAGE_NAVIGATE: 'page.navigate',
+  PAGE_WAIT_TEXT: 'page.waitText',
+  RUNTIME_EVAL: 'runtime.eval',
+  ELEMENT_FILL: 'element.fill',
+  ELEMENT_CLICK: 'element.click',
+  INPUT_KEY: 'input.key',
+  CAPTURE_SNAPSHOT: 'capture.snapshot'
 } as const;
 
 export type IpcOp = (typeof IPC_OP)[keyof typeof IPC_OP];

@@ -73,12 +73,16 @@ export class DaemonClient {
       return;
     }
 
-    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+    const thisFilePath = fileURLToPath(import.meta.url);
+    const rootDir = path.resolve(path.dirname(thisFilePath), '../../..');
     const distEntry = path.join(rootDir, 'dist', 'bin', 'cdt-daemon.js');
     const tsxCli = path.join(rootDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
     const srcEntry = path.join(rootDir, 'src', 'bin', 'cdt-daemon.ts');
 
-    const daemonArgs = (await this.pathExists(distEntry)) ? [distEntry] : [tsxCli, srcEntry];
+    const isDistRuntime = thisFilePath.includes(`${path.sep}dist${path.sep}`);
+    const shouldUseDistEntry = isDistRuntime && (await this.pathExists(distEntry));
+
+    const daemonArgs = shouldUseDistEntry ? [distEntry] : [tsxCli, srcEntry];
 
     const child = spawn(process.execPath, daemonArgs, {
       detached: true,

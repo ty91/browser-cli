@@ -2,26 +2,11 @@ import type { Command } from 'commander';
 
 import { DaemonClient } from '../../../infrastructure/ipc/DaemonClient.js';
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
-import type { CallerContext } from '../../../shared/schema/common.js';
-
-export type DaemonCommandContext = {
-  caller: CallerContext;
-  shareGroup?: string;
-  contextId?: string;
-  timeout?: number;
-  homeDir?: string;
-};
-
-const toContext = (ctx: DaemonCommandContext) => ({
-  caller: ctx.caller,
-  shareGroup: ctx.shareGroup,
-  contextId: ctx.contextId,
-  timeoutMs: ctx.timeout
-});
+import { toDaemonContext, type CommandContext } from './common.js';
 
 export const registerDaemonCommands = (
   root: Command,
-  getCtx: () => DaemonCommandContext,
+  getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
   const daemon = root.command('daemon').description('Broker daemon lifecycle').option('--list');
@@ -32,7 +17,7 @@ export const registerDaemonCommands = (
     .action(async () => {
       const ctx = getCtx();
       const client = new DaemonClient(ctx.homeDir);
-      const reachable = await client.isReachable(toContext(ctx));
+      const reachable = await client.isReachable(toDaemonContext(ctx));
 
       if (!reachable) {
         await onResponse(true, {
@@ -44,7 +29,7 @@ export const registerDaemonCommands = (
         return;
       }
 
-      const response = await client.send(IPC_OP.DAEMON_STATUS, {}, toContext(ctx));
+      const response = await client.send(IPC_OP.DAEMON_STATUS, {}, toDaemonContext(ctx));
       await onResponse(response.ok, response);
     });
 
@@ -54,8 +39,8 @@ export const registerDaemonCommands = (
     .action(async () => {
       const ctx = getCtx();
       const client = new DaemonClient(ctx.homeDir);
-      await client.ensureRunning(toContext(ctx));
-      const response = await client.send(IPC_OP.DAEMON_STATUS, {}, toContext(ctx));
+      await client.ensureRunning(toDaemonContext(ctx));
+      const response = await client.send(IPC_OP.DAEMON_STATUS, {}, toDaemonContext(ctx));
       await onResponse(response.ok, response);
     });
 
@@ -65,7 +50,7 @@ export const registerDaemonCommands = (
     .action(async () => {
       const ctx = getCtx();
       const client = new DaemonClient(ctx.homeDir);
-      const stopped = await client.stop(toContext(ctx));
+      const stopped = await client.stop(toDaemonContext(ctx));
 
       await onResponse(true, {
         id: 'daemon-stop',

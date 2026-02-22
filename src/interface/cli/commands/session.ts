@@ -1,19 +1,9 @@
 import type { Command } from 'commander';
 
-import { DaemonClient } from '../../../infrastructure/ipc/DaemonClient.js';
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
-import type { CallerContext } from '../../../shared/schema/common.js';
 import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
 import { AppError } from '../../../shared/errors/AppError.js';
-
-export type SessionCommandContext = {
-  caller: CallerContext;
-  output: 'json' | 'text';
-  shareGroup?: string;
-  contextId?: string;
-  timeout?: number;
-  homeDir?: string;
-};
+import { sendDaemonCommand, type CommandContext } from './common.js';
 
 const parseHeadless = (opts: { headless?: boolean; headed?: boolean }): boolean => {
   if (opts.headed) {
@@ -25,16 +15,9 @@ const parseHeadless = (opts: { headless?: boolean; headed?: boolean }): boolean 
   return true;
 };
 
-const baseContext = (ctx: SessionCommandContext) => ({
-  caller: ctx.caller,
-  shareGroup: ctx.shareGroup,
-  contextId: ctx.contextId,
-  timeoutMs: ctx.timeout
-});
-
 export const registerSessionCommands = (
   root: Command,
-  getCtx: () => SessionCommandContext,
+  getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
   const session = root.command('session').description('Manage context-bound browser sessions').option('--list');
@@ -56,13 +39,9 @@ export const registerSessionCommands = (
       }
 
       const ctx = getCtx();
-      const daemon = new DaemonClient(ctx.homeDir);
-      await daemon.ensureRunning(baseContext(ctx));
-      const response = await daemon.send(
-        IPC_OP.SESSION_START,
-        { headless: parseHeadless(opts) },
-        baseContext(ctx)
-      );
+      const response = await sendDaemonCommand(ctx, IPC_OP.SESSION_START, {
+        headless: parseHeadless(opts)
+      });
       await onResponse(response.ok, response);
     });
 
@@ -81,9 +60,7 @@ export const registerSessionCommands = (
       }
 
       const ctx = getCtx();
-      const daemon = new DaemonClient(ctx.homeDir);
-      await daemon.ensureRunning(baseContext(ctx));
-      const response = await daemon.send(IPC_OP.SESSION_STATUS, {}, baseContext(ctx));
+      const response = await sendDaemonCommand(ctx, IPC_OP.SESSION_STATUS, {});
       await onResponse(response.ok, response);
     });
 
@@ -102,9 +79,7 @@ export const registerSessionCommands = (
       }
 
       const ctx = getCtx();
-      const daemon = new DaemonClient(ctx.homeDir);
-      await daemon.ensureRunning(baseContext(ctx));
-      const response = await daemon.send(IPC_OP.SESSION_STOP, {}, baseContext(ctx));
+      const response = await sendDaemonCommand(ctx, IPC_OP.SESSION_STOP, {});
       await onResponse(response.ok, response);
     });
 

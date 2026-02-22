@@ -4,6 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 
 import { describe, expect, it } from 'vitest';
+import { BrowserSlotManager } from '../../src/infrastructure/cdp/BrowserSlotManager.js';
 
 type CliResult = {
   code: number;
@@ -48,9 +49,12 @@ const runCli = async (
   });
 };
 
-const parseEnvelope = (stdout: string): Record<string, any> => JSON.parse(stdout);
+const parseEnvelope = (stdout: string): Record<string, any> =>
+  JSON.parse(stdout) as Record<string, any>;
 
-describe('session integration', () => {
+const hasChrome = BrowserSlotManager.resolveChromePath() !== null;
+
+describe.skipIf(!hasChrome)('session integration', () => {
   it('starts, reuses, and stops session in same context', async () => {
     const cwd = process.cwd();
     const tempHome = await mkdtemp(path.join(os.tmpdir(), 'cdt-it-'));
@@ -129,6 +133,127 @@ describe('session integration', () => {
       await runCli(['session', 'stop', '--output', 'json'], envA, cwd);
       await runCli(['session', 'stop', '--output', 'json'], envB, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], envA, cwd);
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it('runs Phase 2 MVP browser commands end-to-end', async () => {
+    const cwd = process.cwd();
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), 'cdt-e2e-'));
+
+    const env = {
+      ...process.env,
+      CDT_HOME: tempHome,
+      CDT_CONTEXT_ID: 'phase2-e2e'
+    };
+
+    const html = [
+      '<html><head><title>CDT Phase2</title></head><body>',
+      '<input id="q" value="" />',
+      "<button id=\"btn\" onclick=\"window.__clicked=true;document.querySelector('#status').textContent='Clicked'\">Go</button>",
+      '<p id="status">Ready</p>',
+      '<script>window.__clicked=false;</script>',
+      '</body></html>'
+    ].join('');
+
+    const dataUrl = `data:text/html,${encodeURIComponent(html)}`;
+
+    try {
+      const start = await runCli(['session', 'start', '--output', 'json'], env, cwd);
+      expect(start.code).toBe(0);
+
+      const opened = await runCli(['page', 'open', '--url', dataUrl, '--output', 'json'], env, cwd);
+      expect(opened.code).toBe(0);
+      const openBody = parseEnvelope(opened.stdout);
+      const openedPage = (openBody.data as { page: { id: number } }).page;
+
+      const evalTitle = await runCli(
+        ['runtime', 'eval', '--page', String(openedPage.id), '--function', '() => document.title', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(evalTitle.code).toBe(0);
+      expect((parseEnvelope(evalTitle.stdout).data as { value: string }).value).toBe('CDT Phase2');
+
+      const fill = await runCli(
+        ['element', 'fill', '--page', String(openedPage.id), '--uid', '#q', '--value', 'hello', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(fill.code).toBe(0);
+
+      const focus = await runCli(
+        [
+          'runtime',
+          'eval',
+          '--page',
+          String(openedPage.id),
+          '--function',
+          "() => { const el = document.querySelector('#q'); if (el && typeof el.focus === 'function') { el.focus(); } return document.activeElement && document.activeElement.id; }",
+          '--output',
+          'json'
+        ],
+        env,
+        cwd
+      );
+      expect(focus.code).toBe(0);
+
+      const key = await runCli(
+        ['input', 'key', '--page', String(openedPage.id), '--key', 'A', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(key.code).toBe(0);
+
+      const click = await runCli(
+        ['element', 'click', '--page', String(openedPage.id), '--uid', '#btn', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(click.code).toBe(0);
+
+      const waitText = await runCli(
+        ['page', 'wait-text', '--page', String(openedPage.id), '--text', 'Clicked', '--timeout', '3000', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(waitText.code).toBe(0);
+
+      const checkState = await runCli(
+        [
+          'runtime',
+          'eval',
+          '--page',
+          String(openedPage.id),
+          '--function',
+          "() => ({ value: document.querySelector('#q') && document.querySelector('#q').value, clicked: window.__clicked === true })",
+          '--output',
+          'json'
+        ],
+        env,
+        cwd
+      );
+      expect(checkState.code).toBe(0);
+      const state = (parseEnvelope(checkState.stdout).data as { value: { value: string; clicked: boolean } }).value;
+      expect(state.value).toContain('hello');
+      expect(state.clicked).toBe(true);
+
+      const snapshot = await runCli(
+        ['capture', 'snapshot', '--page', String(openedPage.id), '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(snapshot.code).toBe(0);
+      const snapshotBody = parseEnvelope(snapshot.stdout);
+      expect((snapshotBody.data as { snapshot: { html: string } }).snapshot.html).toContain('id="q"');
+
+      const listed = await runCli(['page', 'list', '--output', 'json'], env, cwd);
+      expect(listed.code).toBe(0);
+      const pages = (parseEnvelope(listed.stdout).data as { pages: Array<{ id: number }> }).pages;
+      expect(pages.some((item) => item.id === openedPage.id)).toBe(true);
+    } finally {
+      await runCli(['session', 'stop', '--output', 'json'], env, cwd);
+      await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
       await rm(tempHome, { recursive: true, force: true });
     }
   });
