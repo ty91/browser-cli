@@ -300,6 +300,7 @@ export class BrowserSlotManager {
       });
     }
 
+    await page.bringToFront();
     slot.selectedPageId = pageId;
 
     return {

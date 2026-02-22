@@ -8,6 +8,7 @@ import { registerSessionCommands } from './commands/session.js';
 import { registerDaemonCommands } from './commands/daemon.js';
 import { registerPageCommands } from './commands/page.js';
 import { registerTabCommands } from './commands/tab.js';
+import { registerNavigationCommands } from './commands/navigation.js';
 import { registerObserveCommands } from './commands/observe.js';
 import { registerElementCommands } from './commands/element.js';
 import { registerInputCommands } from './commands/input.js';
@@ -100,6 +101,7 @@ export const createProgram = (): Command => {
 
   registerSessionCommands(program, getContext, onResponse);
   registerDaemonCommands(program, getContext, onResponse);
+  registerNavigationCommands(program, getContext, onResponse);
   registerTabCommands(program, getContext, onResponse);
   registerPageCommands(program, getContext, onResponse);
   registerObserveCommands(program, getContext, onResponse);
@@ -149,9 +151,10 @@ export const createProgram = (): Command => {
           command: 'browser',
           examples: [
             'browser start',
+            'browser open https://example.com',
+            'browser navigate https://example.com/dashboard',
             'browser tabs',
             'browser tab new',
-            'browser page open --url https://example.com',
             'browser observe state',
             'browser runtime eval --function "() => document.title"',
             'browser trace start --file ./trace.json'

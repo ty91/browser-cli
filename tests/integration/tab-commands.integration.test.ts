@@ -115,6 +115,17 @@ describe.skipIf(!hasChrome)('tab commands integration', () => {
       expect(selectData.selectedIndex).toBe(2);
       expect(selectData.tab?.index).toBe(2);
 
+      const focusState = await runCli(
+        ['runtime', 'eval', '--function', '() => ({ hasFocus: document.hasFocus(), visibility: document.visibilityState })', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(focusState.code).toBe(0);
+      const focusValue = (parseEnvelope(focusState.stdout).data as { value?: { hasFocus?: boolean; visibility?: string } })
+        ?.value;
+      expect(focusValue?.hasFocus).toBe(true);
+      expect(focusValue?.visibility).toBe('visible');
+
       const closeSecond = await runCli(['tab', 'close', '2', '--output', 'json'], env, cwd);
       expect(closeSecond.code).toBe(0);
       const closeData = parseEnvelope(closeSecond.stdout).data as {

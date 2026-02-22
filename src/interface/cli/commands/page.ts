@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { AppError } from '../../../shared/errors/AppError.js';
 import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
+import { writeDiagnostic } from '../output.js';
 import { sendDaemonCommand, type CommandContext } from './common.js';
 
 const toPageId = (input?: string): number | undefined => {
@@ -30,7 +31,7 @@ export const registerPageCommands = (
 
   page
     .command('open')
-    .description('Open new page in current context')
+    .description('Open new page in current context (deprecated: use browser open <url>)')
     .requiredOption('--url <url>', 'target url')
     .option('--describe', 'Show command schema and examples')
     .action(async (opts: { url: string; describe?: boolean }) => {
@@ -38,11 +39,12 @@ export const registerPageCommands = (
         await onResponse(true, {
           command: 'page open',
           payload: { url: 'string (required)' },
-          examples: ['cdt page open --url https://example.com']
+          examples: ['browser page open --url https://example.com', 'browser open https://example.com']
         });
         return;
       }
 
+      writeDiagnostic('[deprecated] Use "browser open <url>" instead of "browser page open --url <url>".');
       const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_OPEN, {
         url: opts.url
       });
@@ -58,7 +60,7 @@ export const registerPageCommands = (
         await onResponse(true, {
           command: 'page list',
           payload: {},
-          examples: ['cdt page list --output json']
+          examples: ['browser page list --output json']
         });
         return;
       }
@@ -77,7 +79,7 @@ export const registerPageCommands = (
         await onResponse(true, {
           command: 'page use',
           payload: { page: 'number (required)' },
-          examples: ['cdt page use --page 1']
+          examples: ['browser page use --page 1']
         });
         return;
       }
@@ -101,7 +103,7 @@ export const registerPageCommands = (
 
   page
     .command('navigate')
-    .description('Navigate current/selected page')
+    .description('Navigate current/selected page (deprecated: use browser navigate <url>)')
     .requiredOption('--url <url>', 'target url')
     .option('--page <id>', 'target page id (default: current page)')
     .option('--describe', 'Show command schema and examples')
@@ -110,11 +112,16 @@ export const registerPageCommands = (
         await onResponse(true, {
           command: 'page navigate',
           payload: { url: 'string (required)', page: 'number (optional)' },
-          examples: ['cdt page navigate --url https://example.com', 'cdt page navigate --page 2 --url https://example.com']
+          examples: [
+            'browser page navigate --url https://example.com',
+            'browser page navigate --page 2 --url https://example.com',
+            'browser navigate https://example.com'
+          ]
         });
         return;
       }
 
+      writeDiagnostic('[deprecated] Use "browser navigate <url>" instead of "browser page navigate --url <url>".');
       const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_NAVIGATE, {
         pageId: toPageId(opts.page),
         url: opts.url
@@ -158,7 +165,7 @@ export const registerPageCommands = (
         await onResponse(true, {
           command: 'page wait-text',
           payload: { text: 'string (required)', page: 'number (optional)' },
-          examples: ['cdt page wait-text --text Ready', 'cdt page wait-text --page 1 --text Success --timeout 5000']
+          examples: ['browser page wait-text --text Ready', 'browser page wait-text --page 1 --text Success --timeout 5000']
         });
         return;
       }
@@ -199,7 +206,7 @@ export const registerPageCommands = (
   page.action(async () => {
     throw new AppError('Missing page subcommand.', {
       code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt page --help']
+      suggestions: ['Run: browser page --help']
     });
   });
 };
