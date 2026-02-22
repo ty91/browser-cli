@@ -21,6 +21,22 @@ const toPageId = (input?: string): number | undefined => {
   return value;
 };
 
+const toPositiveInt = (name: string, input?: string): number | undefined => {
+  if (input === undefined) {
+    return undefined;
+  }
+
+  const value = Number(input);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new AppError(`${name} must be a positive integer.`, {
+      code: ERROR_CODE.VALIDATION_ERROR,
+      suggestions: [`Use: --${name} 1280`]
+    });
+  }
+
+  return value;
+};
+
 export const registerCaptureCommands = (
   root: Command,
   getCtx: () => CommandContext,
@@ -44,16 +60,26 @@ export const registerCaptureCommands = (
     .description('Capture screenshot from target page')
     .option('--page <id>', 'target page id (default: current page)')
     .option('--file <path>', 'optional output file path')
+    .option('--dir <path>', 'optional output directory for generated file name')
+    .option('--label <name>', 'optional label in generated file name')
     .option('--full-page', 'capture full page screenshot')
     .option('--format <type>', 'png|jpeg|webp')
     .option('--quality <0-100>', 'jpeg/webp quality')
+    .option('--max-width <px>', 'optional max output width')
+    .option('--max-height <px>', 'optional max output height')
+    .option('--keep <n>', 'artifact retention count (default: 300)')
     .action(
       async (opts: {
         page?: string;
         file?: string;
+        dir?: string;
+        label?: string;
         fullPage?: boolean;
         format?: 'png' | 'jpeg' | 'webp';
         quality?: string;
+        maxWidth?: string;
+        maxHeight?: string;
+        keep?: string;
       }) => {
         const quality = opts.quality ? Number(opts.quality) : undefined;
         if (quality !== undefined && (!Number.isInteger(quality) || quality < 0 || quality > 100)) {
@@ -66,9 +92,14 @@ export const registerCaptureCommands = (
         const response = await sendDaemonCommand(getCtx(), IPC_OP.CAPTURE_SCREENSHOT, {
           pageId: toPageId(opts.page),
           filePath: opts.file,
+          dirPath: opts.dir,
+          label: opts.label,
           fullPage: opts.fullPage,
           format: opts.format,
-          quality
+          quality,
+          maxWidth: toPositiveInt('max-width', opts.maxWidth),
+          maxHeight: toPositiveInt('max-height', opts.maxHeight),
+          keep: toPositiveInt('keep', opts.keep)
         });
         await onResponse(response.ok, response);
       }

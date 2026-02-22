@@ -58,6 +58,24 @@ export const registerNetworkCommands = (
       await onResponse(response.ok, response);
     });
 
+  network
+    .command('wait')
+    .description('Wait until network request matches condition')
+    .requiredOption('--match <pattern>', 'substring or /regex/flags pattern against URL')
+    .option('--page <id>', 'target page id')
+    .option('--method <method>', 'HTTP method filter')
+    .option('--status <code>', 'status code filter')
+    .action(async (opts: { match: string; page?: string; method?: string; status?: string }) => {
+      const status = opts.status ? toPositiveInt('status', opts.status) : undefined;
+      const response = await sendDaemonCommand(getCtx(), IPC_OP.NETWORK_WAIT, {
+        pattern: opts.match,
+        pageId: toPositiveInt('page', opts.page),
+        method: opts.method,
+        status
+      });
+      await onResponse(response.ok, response);
+    });
+
   network.action(async () => {
     throw new AppError('Missing network subcommand.', {
       code: ERROR_CODE.VALIDATION_ERROR,

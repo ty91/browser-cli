@@ -54,6 +54,21 @@ export const registerConsoleCommands = (
       await onResponse(response.ok, response);
     });
 
+  consoleCommand
+    .command('wait')
+    .description('Wait until console message matches pattern')
+    .requiredOption('--pattern <pattern>', 'substring or /regex/flags pattern')
+    .option('--page <id>', 'target page id')
+    .option('--type <kind>', 'console type filter')
+    .action(async (opts: { pattern: string; page?: string; type?: string }) => {
+      const response = await sendDaemonCommand(getCtx(), IPC_OP.CONSOLE_WAIT, {
+        pattern: opts.pattern,
+        pageId: toPositiveInt('page', opts.page),
+        type: opts.type
+      });
+      await onResponse(response.ok, response);
+    });
+
   consoleCommand.action(async () => {
     throw new AppError('Missing console subcommand.', {
       code: ERROR_CODE.VALIDATION_ERROR,

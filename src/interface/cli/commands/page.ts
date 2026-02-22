@@ -170,6 +170,32 @@ export const registerPageCommands = (
       await onResponse(response.ok, response);
     });
 
+  page
+    .command('wait-selector')
+    .description('Wait until selector appears in page')
+    .requiredOption('--selector <selector>', 'CSS selector to wait for')
+    .option('--page <id>', 'target page id (default: current page)')
+    .action(async (opts: { page?: string; selector: string }) => {
+      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_WAIT_SELECTOR, {
+        pageId: toPageId(opts.page),
+        selector: opts.selector
+      });
+      await onResponse(response.ok, response);
+    });
+
+  page
+    .command('wait-url')
+    .description('Wait until page URL matches expected pattern')
+    .requiredOption('--pattern <pattern>', 'substring or /regex/flags pattern')
+    .option('--page <id>', 'target page id (default: current page)')
+    .action(async (opts: { page?: string; pattern: string }) => {
+      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_WAIT_URL, {
+        pageId: toPageId(opts.page),
+        pattern: opts.pattern
+      });
+      await onResponse(response.ok, response);
+    });
+
   page.action(async () => {
     throw new AppError('Missing page subcommand.', {
       code: ERROR_CODE.VALIDATION_ERROR,

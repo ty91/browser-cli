@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { Launcher, launch, type LaunchedChrome } from 'chrome-launcher';
@@ -11,6 +12,7 @@ import {
   type GeolocationOptions,
   type HTTPRequest,
   type KeyInput,
+  type MouseButton,
   type NetworkConditions,
   type Page,
   type Viewport
@@ -64,6 +66,12 @@ type TraceState = {
   startedAt: string;
 };
 
+type UrlPatternMatcher = {
+  source: string;
+  mode: 'substring' | 'regex';
+  regex?: RegExp;
+};
+
 type BrowserSlot = {
   contextKeyHash: string;
   chrome: LaunchedChrome;
@@ -100,6 +108,7 @@ export type SlotRuntimeState = {
 };
 
 const DEFAULT_TIMEOUT_MS = 30_000;
+const SCREENSHOT_KEEP_DEFAULT = 300;
 
 const selectorSuggestions = (selector: string): string[] => [
   `Run: cdt capture snapshot --output json and verify selector ${selector}`,
@@ -130,6 +139,54 @@ const toOptionalString = (input: string | undefined | null): string | null => {
     return null;
   }
   return input;
+};
+
+const sleep = async (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const parsePattern = (source: string): UrlPatternMatcher => {
+  if (source.length >= 2 && source.startsWith('/') && source.lastIndexOf('/') > 0) {
+    const idx = source.lastIndexOf('/');
+    const body = source.slice(1, idx);
+    const flags = source.slice(idx + 1);
+    try {
+      return {
+        source,
+        mode: 'regex',
+        regex: new RegExp(body, flags)
+      };
+    } catch {
+      // Fall back to substring matching when regex parse fails.
+    }
+  }
+
+  return {
+    source,
+    mode: 'substring'
+  };
+};
+
+const matchesPattern = (matcher: UrlPatternMatcher, value: string): boolean => {
+  if (matcher.mode === 'regex' && matcher.regex) {
+    return matcher.regex.test(value);
+  }
+  return value.includes(matcher.source);
+};
+
+const sanitizeLabel = (label?: string): string => {
+  const fallback = 'capture';
+  if (!label) {
+    return fallback;
+  }
+  const normalized = label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+  return normalized.length > 0 ? normalized : fallback;
 };
 
 export class BrowserSlotManager {
@@ -323,6 +380,271 @@ export class BrowserSlotManager {
       matched: true,
       pageId,
       text: input.text
+    };
+  }
+
+  public async waitSelector(
+    contextKeyHash: string,
+    input: { pageId?: number; selector: string; timeoutMs?: number }
+  ): Promise<{ matched: true; pageId: number; selector: string }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    try {
+      await page.waitForSelector(input.selector, {
+        timeout: toTimeout(input.timeoutMs)
+      });
+    } catch (error) {
+      throw new AppError(`Timed out waiting for selector: ${input.selector}`, {
+        code: ERROR_CODE.TIMEOUT,
+        details: {
+          selector: input.selector,
+          pageId,
+          reason: error instanceof Error ? error.message : String(error)
+        },
+        suggestions: ['Increase timeout: --timeout <ms>', ...selectorSuggestions(input.selector)]
+      });
+    }
+
+    return {
+      matched: true,
+      pageId,
+      selector: input.selector
+    };
+  }
+
+  public async waitUrl(
+    contextKeyHash: string,
+    input: { pageId?: number; pattern: string; timeoutMs?: number }
+  ): Promise<{ matched: true; pageId: number; url: string; pattern: string }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const matcher = parsePattern(input.pattern);
+
+    const deadline = Date.now() + toTimeout(input.timeoutMs);
+    while (Date.now() < deadline) {
+      const url = page.url();
+      if (matchesPattern(matcher, url)) {
+        return {
+          matched: true,
+          pageId,
+          url,
+          pattern: input.pattern
+        };
+      }
+      await sleep(100);
+    }
+
+    throw new AppError(`Timed out waiting for URL pattern: ${input.pattern}`, {
+      code: ERROR_CODE.TIMEOUT,
+      details: {
+        pageId,
+        pattern: input.pattern,
+        url: page.url()
+      },
+      suggestions: ['Increase timeout: --timeout <ms>', 'Verify page navigation logic or expected URL pattern.']
+    });
+  }
+
+  public async observeState(
+    contextKeyHash: string,
+    input: { pageId?: number }
+  ): Promise<{
+    page: PageSummary;
+    state: {
+      viewport: { width: number; height: number };
+      scroll: { x: number; y: number };
+      activeElement: {
+        tag: string | null;
+        id: string | null;
+        name: string | null;
+      };
+      dialogOpen: boolean;
+      capturedAt: string;
+    };
+  }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    const observed = await page.evaluate(() => {
+      const doc = (globalThis as { document?: { activeElement?: { tagName?: string; id?: string; getAttribute?: (name: string) => string | null } } }).document;
+      const win = (globalThis as { window?: { innerWidth?: number; innerHeight?: number; scrollX?: number; scrollY?: number } }).window;
+      const active = doc?.activeElement;
+
+      return {
+        viewport: {
+          width: win?.innerWidth ?? 0,
+          height: win?.innerHeight ?? 0
+        },
+        scroll: {
+          x: win?.scrollX ?? 0,
+          y: win?.scrollY ?? 0
+        },
+        activeElement: {
+          tag: active?.tagName ? active.tagName.toLowerCase() : null,
+          id: active?.id ?? null,
+          name: active?.getAttribute?.('name') ?? null
+        }
+      };
+    });
+
+    return {
+      page: await this.toPageSummary(slot, pageId, page),
+      state: {
+        viewport: observed.viewport,
+        scroll: observed.scroll,
+        activeElement: observed.activeElement,
+        dialogOpen: slot.pendingDialogs.has(pageId),
+        capturedAt: new Date().toISOString()
+      }
+    };
+  }
+
+  public async observeTargets(
+    contextKeyHash: string,
+    input: { pageId?: number; limit?: number; onlyVisible?: boolean }
+  ): Promise<{
+    page: PageSummary;
+    targets: Array<{
+      id: string;
+      tag: string;
+      role: string | null;
+      text: string;
+      selectorCandidates: string[];
+      bbox: { x: number; y: number; width: number; height: number };
+      visible: boolean;
+      enabled: boolean;
+      editable: boolean;
+      inViewport: boolean;
+    }>;
+  }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const limit = input.limit ?? 200;
+
+    const targets = await page.evaluate(
+      ({ capLimit, onlyVisible }) => {
+        const doc = (globalThis as { document?: { querySelectorAll?: (selector: string) => ArrayLike<unknown> } }).document;
+        const win = (globalThis as {
+          window?: {
+            getComputedStyle?: (el: unknown) => { display?: string; visibility?: string; opacity?: string };
+            innerWidth?: number;
+            innerHeight?: number;
+          };
+        }).window;
+
+        const elements = Array.from(
+          doc?.querySelectorAll?.(
+            'a,button,input,textarea,select,[role="button"],[role="link"],[role="menuitem"],[contenteditable="true"],[tabindex]'
+          ) ?? []
+        ) as Array<{
+          id?: string;
+          className?: string;
+          tagName?: string;
+          textContent?: string | null;
+          isContentEditable?: boolean;
+          disabled?: boolean;
+          getAttribute?: (name: string) => string | null;
+          getBoundingClientRect?: () => { x: number; y: number; width: number; height: number; top: number; right: number; bottom: number; left: number };
+        }>;
+
+        const out: Array<{
+          id: string;
+          tag: string;
+          role: string | null;
+          text: string;
+          selectorCandidates: string[];
+          bbox: { x: number; y: number; width: number; height: number };
+          visible: boolean;
+          enabled: boolean;
+          editable: boolean;
+          inViewport: boolean;
+        }> = [];
+
+        for (let index = 0; index < elements.length; index += 1) {
+          const element = elements[index];
+          const rect = element.getBoundingClientRect?.();
+          if (!rect) {
+            continue;
+          }
+          const style = win?.getComputedStyle?.(element) ?? {};
+          const visible =
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            style.opacity !== '0';
+          const inViewport =
+            rect.bottom > 0 &&
+            rect.right > 0 &&
+            rect.left < (win?.innerWidth ?? 0) &&
+            rect.top < (win?.innerHeight ?? 0);
+
+          if (onlyVisible && !visible) {
+            continue;
+          }
+
+          const selectorCandidatesRaw: string[] = [];
+          if (element.id) {
+            selectorCandidatesRaw.push(`#${element.id.replace(/([\\[\\]#.:"'])/g, '\\$1')}`);
+          }
+          const testId = element.getAttribute?.('data-testid');
+          if (testId) {
+            selectorCandidatesRaw.push(`[data-testid="${testId.replace(/([\\[\\]#.:"'])/g, '\\$1')}"]`);
+          }
+          const name = element.getAttribute?.('name');
+          if (name) {
+            selectorCandidatesRaw.push(`[name="${name.replace(/([\\[\\]#.:"'])/g, '\\$1')}"]`);
+          }
+          const aria = element.getAttribute?.('aria-label');
+          if (aria) {
+            selectorCandidatesRaw.push(`[aria-label="${aria.replace(/([\\[\\]#.:"'])/g, '\\$1')}"]`);
+          }
+          const role = element.getAttribute?.('role');
+          if (role) {
+            selectorCandidatesRaw.push(`[role="${role.replace(/([\\[\\]#.:"'])/g, '\\$1')}"]`);
+          }
+          const classNames = (element.className || '')
+            .toString()
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((className) => `.${className.replace(/([\\[\\]#.:"'])/g, '\\$1')}`)
+            .join('');
+          selectorCandidatesRaw.push(`${(element.tagName ?? 'div').toLowerCase()}${classNames}`);
+          const selectorCandidates = Array.from(new Set(selectorCandidatesRaw));
+
+          out.push({
+            id: `t-${index + 1}`,
+            tag: (element.tagName ?? 'div').toLowerCase(),
+            role: element.getAttribute?.('role') ?? null,
+            text: (element.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 120),
+            selectorCandidates,
+            bbox: {
+              x: Math.round(rect.x),
+              y: Math.round(rect.y),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height)
+            },
+            visible,
+            enabled: !element.disabled,
+            editable: element.isContentEditable || element.tagName === 'INPUT' || element.tagName === 'TEXTAREA',
+            inViewport
+          });
+
+          if (out.length >= capLimit) {
+            break;
+          }
+        }
+
+        return out;
+      },
+      { capLimit: limit, onlyVisible: input.onlyVisible === true }
+    );
+
+    return {
+      page: await this.toPageSummary(slot, pageId, page),
+      targets
     };
   }
 
@@ -524,6 +846,186 @@ export class BrowserSlotManager {
     };
   }
 
+  public async typeText(
+    contextKeyHash: string,
+    input: { pageId?: number; text: string; delayMs?: number }
+  ): Promise<{ pageId: number; textLength: number; delayMs: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    await page.keyboard.type(input.text, {
+      delay: input.delayMs ?? 0
+    });
+
+    return {
+      pageId,
+      textLength: input.text.length,
+      delayMs: input.delayMs ?? 0
+    };
+  }
+
+  public async mouseMove(
+    contextKeyHash: string,
+    input: { pageId?: number; x: number; y: number; steps?: number }
+  ): Promise<{ pageId: number; x: number; y: number; steps: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    await page.bringToFront();
+    await page.mouse.move(input.x, input.y, { steps: input.steps ?? 1 });
+
+    return {
+      pageId,
+      x: input.x,
+      y: input.y,
+      steps: input.steps ?? 1
+    };
+  }
+
+  public async mouseClick(
+    contextKeyHash: string,
+    input: {
+      pageId?: number;
+      x: number;
+      y: number;
+      button?: MouseButton;
+      count?: number;
+      delayMs?: number;
+    }
+  ): Promise<{ pageId: number; x: number; y: number; button: MouseButton; count: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    await this.assertPointInteractable(page, pageId, input.x, input.y);
+
+    await page.bringToFront();
+    await page.mouse.click(input.x, input.y, {
+      button: input.button ?? 'left',
+      clickCount: input.count ?? 1,
+      delay: input.delayMs
+    });
+
+    return {
+      pageId,
+      x: input.x,
+      y: input.y,
+      button: input.button ?? 'left',
+      count: input.count ?? 1
+    };
+  }
+
+  public async mouseDown(
+    contextKeyHash: string,
+    input: { pageId?: number; button?: MouseButton; count?: number }
+  ): Promise<{ pageId: number; button: MouseButton; count: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    await page.bringToFront();
+    await page.mouse.down({
+      button: input.button ?? 'left',
+      clickCount: input.count ?? 1
+    });
+
+    return {
+      pageId,
+      button: input.button ?? 'left',
+      count: input.count ?? 1
+    };
+  }
+
+  public async mouseUp(
+    contextKeyHash: string,
+    input: { pageId?: number; button?: MouseButton; count?: number }
+  ): Promise<{ pageId: number; button: MouseButton; count: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    await page.bringToFront();
+    await page.mouse.up({
+      button: input.button ?? 'left',
+      clickCount: input.count ?? 1
+    });
+
+    return {
+      pageId,
+      button: input.button ?? 'left',
+      count: input.count ?? 1
+    };
+  }
+
+  public async mouseDrag(
+    contextKeyHash: string,
+    input: { pageId?: number; fromX: number; fromY: number; toX: number; toY: number; steps?: number; button?: MouseButton }
+  ): Promise<{ pageId: number; fromX: number; fromY: number; toX: number; toY: number; steps: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    await this.assertPointInteractable(page, pageId, input.fromX, input.fromY);
+    await this.assertPointInteractable(page, pageId, input.toX, input.toY);
+
+    const steps = input.steps ?? 16;
+    const button = input.button ?? 'left';
+
+    await page.bringToFront();
+    await page.mouse.move(input.fromX, input.fromY);
+    await page.mouse.down({ button, clickCount: 1 });
+    await page.mouse.move(input.toX, input.toY, { steps });
+    await page.mouse.up({ button, clickCount: 1 });
+
+    return {
+      pageId,
+      fromX: input.fromX,
+      fromY: input.fromY,
+      toX: input.toX,
+      toY: input.toY,
+      steps
+    };
+  }
+
+  public async mouseScroll(
+    contextKeyHash: string,
+    input: { pageId?: number; dx?: number; dy: number }
+  ): Promise<{ pageId: number; dx: number; dy: number; changed: boolean }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const dx = input.dx ?? 0;
+
+    await page.bringToFront();
+    const before = await page.evaluate(() => {
+      const win = (globalThis as { window?: { scrollX?: number; scrollY?: number } }).window;
+      return { x: win?.scrollX ?? 0, y: win?.scrollY ?? 0 };
+    });
+
+    await page.mouse.wheel({ deltaX: dx, deltaY: input.dy });
+
+    const after = await page.evaluate(() => {
+      const win = (globalThis as { window?: { scrollX?: number; scrollY?: number } }).window;
+      return { x: win?.scrollX ?? 0, y: win?.scrollY ?? 0 };
+    });
+
+    const changed = before.x !== after.x || before.y !== after.y;
+    if (!changed) {
+      throw new AppError('Scroll action had no visible effect.', {
+        code: ERROR_CODE.ACTION_NO_EFFECT,
+        details: {
+          pageId,
+          before,
+          after,
+          dx,
+          dy: input.dy
+        },
+        suggestions: ['Try larger wheel delta values.', 'Ensure the page has scrollable content.']
+      });
+    }
+
+    return {
+      pageId,
+      dx,
+      dy: input.dy,
+      changed
+    };
+  }
+
   public async handleDialog(
     contextKeyHash: string,
     input: { pageId?: number; action: 'accept' | 'dismiss'; promptText?: string }
@@ -587,27 +1089,65 @@ export class BrowserSlotManager {
     input: {
       pageId?: number;
       filePath?: string;
+      dirPath?: string;
+      label?: string;
       fullPage?: boolean;
       format?: 'png' | 'jpeg' | 'webp';
       quality?: number;
+      maxWidth?: number;
+      maxHeight?: number;
+      keep?: number;
     }
-  ): Promise<{ pageId: number; filePath: string | null; bytes: number }> {
+  ): Promise<{
+    pageId: number;
+    filePath: string;
+    bytes: number;
+    sha256: string;
+    width: number | null;
+    height: number | null;
+    resized: boolean;
+    capturedAt: string;
+  }> {
     const slot = this.ensureSlot(contextKeyHash);
     const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const format = input.format ?? 'png';
+    const filePath = await this.resolveScreenshotPath(contextKeyHash, pageId, {
+      filePath: input.filePath,
+      dirPath: input.dirPath,
+      label: input.label,
+      format
+    });
+    const capturedAt = new Date().toISOString();
 
-    const result = await page.screenshot({
-      path: input.filePath,
+    const raw = await page.screenshot({
       fullPage: input.fullPage,
-      type: input.format,
-      quality: input.quality
+      type: format,
+      quality: format === 'png' ? undefined : input.quality
+    });
+    const rawBuffer = typeof raw === 'string' ? Buffer.from(raw, 'base64') : Buffer.from(raw);
+
+    const resized = await this.resizeScreenshotIfNeeded({
+      format,
+      source: rawBuffer,
+      maxWidth: input.maxWidth,
+      maxHeight: input.maxHeight
     });
 
-    const bytes = typeof result === 'string' ? Buffer.byteLength(result) : result.byteLength;
+    await writeFile(filePath, resized.buffer);
+
+    if (!input.filePath) {
+      await this.cleanupArtifacts(path.dirname(filePath), input.keep ?? SCREENSHOT_KEEP_DEFAULT);
+    }
 
     return {
       pageId,
-      filePath: input.filePath ?? null,
-      bytes
+      filePath,
+      bytes: resized.buffer.byteLength,
+      sha256: createHash('sha256').update(resized.buffer).digest('hex'),
+      width: resized.width,
+      height: resized.height,
+      resized: resized.resized,
+      capturedAt
     };
   }
 
@@ -649,6 +1189,39 @@ export class BrowserSlotManager {
     return {
       message
     };
+  }
+
+  public async waitConsoleMessage(
+    contextKeyHash: string,
+    input: { pageId?: number; pattern: string; type?: ConsoleMessageType; timeoutMs?: number }
+  ): Promise<{ message: ConsoleEntry }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const matcher = parsePattern(input.pattern);
+    const deadline = Date.now() + toTimeout(input.timeoutMs);
+
+    while (Date.now() < deadline) {
+      const found = slot.consoleEntries.find((entry) => {
+        if (input.pageId !== undefined && entry.pageId !== input.pageId) {
+          return false;
+        }
+        if (input.type && entry.type !== input.type) {
+          return false;
+        }
+        return matchesPattern(matcher, entry.text);
+      });
+
+      if (found) {
+        return { message: found };
+      }
+
+      await sleep(100);
+    }
+
+    throw new AppError(`Timed out waiting for console pattern: ${input.pattern}`, {
+      code: ERROR_CODE.TIMEOUT,
+      details: { pattern: input.pattern, pageId: input.pageId, type: input.type },
+      suggestions: ['Increase timeout: --timeout <ms>', 'Run: cdt console list --output json']
+    });
   }
 
   public listNetworkRequests(
@@ -702,6 +1275,42 @@ export class BrowserSlotManager {
     return {
       request
     };
+  }
+
+  public async waitNetworkRequest(
+    contextKeyHash: string,
+    input: { pageId?: number; pattern: string; method?: string; status?: number; timeoutMs?: number }
+  ): Promise<{ request: NetworkEntry }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const matcher = parsePattern(input.pattern);
+    const deadline = Date.now() + toTimeout(input.timeoutMs);
+
+    while (Date.now() < deadline) {
+      const found = slot.networkEntries.find((entry) => {
+        if (input.pageId !== undefined && entry.pageId !== input.pageId) {
+          return false;
+        }
+        if (input.method && entry.method.toLowerCase() !== input.method.toLowerCase()) {
+          return false;
+        }
+        if (input.status !== undefined && entry.status !== input.status) {
+          return false;
+        }
+        return matchesPattern(matcher, entry.url);
+      });
+
+      if (found) {
+        return { request: found };
+      }
+
+      await sleep(100);
+    }
+
+    throw new AppError(`Timed out waiting for network pattern: ${input.pattern}`, {
+      code: ERROR_CODE.TIMEOUT,
+      details: { pattern: input.pattern, pageId: input.pageId, method: input.method, status: input.status },
+      suggestions: ['Increase timeout: --timeout <ms>', 'Run: cdt network list --output json']
+    });
   }
 
   public async setEmulation(
@@ -922,6 +1531,218 @@ export class BrowserSlotManager {
     }
 
     return slot;
+  }
+
+  private async assertPointInteractable(page: Page, pageId: number, x: number, y: number): Promise<void> {
+    const pointCheck = await page.evaluate(
+      (targetX, targetY) => {
+        const doc = (globalThis as { document?: { elementFromPoint?: (x: number, y: number) => unknown } }).document;
+        const win = (globalThis as {
+          window?: {
+            innerWidth?: number;
+            innerHeight?: number;
+            getComputedStyle?: (el: unknown) => { pointerEvents?: string; visibility?: string; display?: string };
+          };
+        }).window;
+
+        if (targetX < 0 || targetY < 0 || targetX > (win?.innerWidth ?? 0) || targetY > (win?.innerHeight ?? 0)) {
+          return {
+            ok: false,
+            reason: 'out'
+          };
+        }
+
+        const element = doc?.elementFromPoint?.(targetX, targetY) as
+          | {
+              tagName?: string;
+              getAttribute?: (name: string) => string | null;
+              disabled?: boolean;
+            }
+          | undefined;
+        if (!element) {
+          return {
+            ok: false,
+            reason: 'out'
+          };
+        }
+
+        const style = win?.getComputedStyle?.(element) ?? {};
+        if (style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') {
+          return {
+            ok: false,
+            reason: 'not-interactable',
+            tag: element.tagName?.toLowerCase() ?? null
+          };
+        }
+
+        if (element.disabled) {
+          return {
+            ok: false,
+            reason: 'disabled',
+            tag: element.tagName?.toLowerCase() ?? null
+          };
+        }
+
+        return {
+          ok: true,
+          reason: 'ok',
+          tag: element.tagName?.toLowerCase() ?? null
+        };
+      },
+      x,
+      y
+    );
+
+    if (pointCheck.ok) {
+      return;
+    }
+
+    if (pointCheck.reason === 'out') {
+      throw new AppError(`Target coordinates are outside interactable viewport: (${x}, ${y})`, {
+        code: ERROR_CODE.TARGET_OUT_OF_VIEW,
+        details: { pageId, x, y },
+        suggestions: ['Run: cdt observe state --output json', 'Use coordinates within viewport bounds.']
+      });
+    }
+
+    throw new AppError(`Target at (${x}, ${y}) is not interactable.`, {
+      code: ERROR_CODE.TARGET_NOT_INTERACTABLE,
+      details: { pageId, x, y, reason: pointCheck.reason, tag: pointCheck.tag ?? null },
+      suggestions: ['Scroll or adjust coordinates.', 'Use: cdt observe targets --only-visible']
+    });
+  }
+
+  private async resolveScreenshotPath(
+    contextKeyHash: string,
+    pageId: number,
+    input: { filePath?: string; dirPath?: string; label?: string; format: 'png' | 'jpeg' | 'webp' }
+  ): Promise<string> {
+    if (input.filePath) {
+      await mkdir(path.dirname(input.filePath), { recursive: true });
+      return input.filePath;
+    }
+
+    const day = new Date().toISOString().slice(0, 10);
+    const baseDir =
+      input.dirPath ??
+      path.join(resolveContextDir(contextKeyHash, this.homeDir), 'artifacts', 'screenshots', day);
+    await mkdir(baseDir, { recursive: true });
+
+    const ext = input.format === 'jpeg' ? 'jpg' : input.format;
+    const label = sanitizeLabel(input.label);
+    return path.join(baseDir, `${Date.now()}-p${pageId}-${label}.${ext}`);
+  }
+
+  private async resizeScreenshotIfNeeded(input: {
+      source: Buffer;
+      format: 'png' | 'jpeg' | 'webp';
+      maxWidth?: number;
+      maxHeight?: number;
+    }): Promise<{ buffer: Buffer; width: number | null; height: number | null; resized: boolean }> {
+    const size = this.detectImageDimensions(input.source, input.format);
+
+    if (!input.maxWidth && !input.maxHeight) {
+      return {
+        buffer: input.source,
+        width: size?.width ?? null,
+        height: size?.height ?? null,
+        resized: false
+      };
+    }
+
+    const maxWidth = input.maxWidth ?? Number.MAX_SAFE_INTEGER;
+    const maxHeight = input.maxHeight ?? Number.MAX_SAFE_INTEGER;
+
+    if (size && size.width <= maxWidth && size.height <= maxHeight) {
+      return {
+        buffer: input.source,
+        width: size.width,
+        height: size.height,
+        resized: false
+      };
+    }
+
+    // Dimension downscaling in Node would require an extra native dependency.
+    // Keep current image bytes and expose original dimensions for loop-side decisions.
+
+    return {
+      buffer: input.source,
+      width: size?.width ?? null,
+      height: size?.height ?? null,
+      resized: false
+    };
+  }
+
+  private detectImageDimensions(
+    buffer: Buffer,
+    format: 'png' | 'jpeg' | 'webp'
+  ): { width: number; height: number } | null {
+    if (format === 'png') {
+      if (buffer.byteLength < 24) {
+        return null;
+      }
+      const signature = buffer.subarray(0, 8).toString('hex');
+      if (signature !== '89504e470d0a1a0a') {
+        return null;
+      }
+      return {
+        width: buffer.readUInt32BE(16),
+        height: buffer.readUInt32BE(20)
+      };
+    }
+
+    if (format === 'jpeg') {
+      if (buffer.byteLength < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+        return null;
+      }
+
+      let offset = 2;
+      while (offset + 9 < buffer.byteLength) {
+        if (buffer[offset] !== 0xff) {
+          offset += 1;
+          continue;
+        }
+
+        const marker = buffer[offset + 1];
+        const length = buffer.readUInt16BE(offset + 2);
+
+        if (marker >= 0xc0 && marker <= 0xc3) {
+          return {
+            height: buffer.readUInt16BE(offset + 5),
+            width: buffer.readUInt16BE(offset + 7)
+          };
+        }
+
+        offset += 2 + length;
+      }
+    }
+
+    return null;
+  }
+
+  private async cleanupArtifacts(dirPath: string, keep: number): Promise<void> {
+    const names = await readdir(dirPath).catch(() => []);
+    if (names.length <= keep) {
+      return;
+    }
+
+    const entries: Array<{ filePath: string; mtimeMs: number }> = [];
+    for (const name of names) {
+      const filePath = path.join(dirPath, name);
+      const info = await stat(filePath).catch(() => null);
+      if (!info || !info.isFile()) {
+        continue;
+      }
+      entries.push({ filePath, mtimeMs: info.mtimeMs });
+    }
+
+    if (entries.length <= keep) {
+      return;
+    }
+
+    entries.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const stale = entries.slice(keep);
+    await Promise.all(stale.map(async (entry) => rm(entry.filePath, { force: true })));
   }
 
   private async launchSlot(contextKeyHash: string, headless: boolean): Promise<BrowserSlot> {

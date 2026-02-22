@@ -60,6 +60,26 @@ const pageWaitTextSchema = z.object({
   text: z.string().min(1)
 });
 
+const pageWaitSelectorSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  selector: z.string().min(1)
+});
+
+const pageWaitUrlSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  pattern: z.string().min(1)
+});
+
+const observeStateSchema = z.object({
+  pageId: pageIdSchema.optional()
+});
+
+const observeTargetsSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  limit: z.number().int().positive().optional(),
+  onlyVisible: z.boolean().optional()
+});
+
 const runtimeEvalSchema = z.object({
   pageId: pageIdSchema.optional(),
   functionSource: z.string().min(1)
@@ -111,6 +131,58 @@ const inputKeySchema = z.object({
   key: z.string().min(1)
 });
 
+const mouseButtonSchema = z.enum(['left', 'right', 'middle']);
+
+const inputTypeSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  text: z.string(),
+  delayMs: z.number().int().positive().optional()
+});
+
+const inputMouseMoveSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  x: z.number(),
+  y: z.number(),
+  steps: z.number().int().positive().optional()
+});
+
+const inputClickSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  x: z.number(),
+  y: z.number(),
+  button: mouseButtonSchema.optional(),
+  count: z.number().int().positive().optional(),
+  delayMs: z.number().int().nonnegative().optional()
+});
+
+const inputMouseDownSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  button: mouseButtonSchema.optional(),
+  count: z.number().int().positive().optional()
+});
+
+const inputMouseUpSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  button: mouseButtonSchema.optional(),
+  count: z.number().int().positive().optional()
+});
+
+const inputDragSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  fromX: z.number(),
+  fromY: z.number(),
+  toX: z.number(),
+  toY: z.number(),
+  steps: z.number().int().positive().optional(),
+  button: mouseButtonSchema.optional()
+});
+
+const inputScrollSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  dx: z.number().optional(),
+  dy: z.number()
+});
+
 const dialogHandleSchema = z.object({
   pageId: pageIdSchema.optional(),
   action: z.enum(['accept', 'dismiss']),
@@ -124,9 +196,14 @@ const snapshotSchema = z.object({
 const screenshotSchema = z.object({
   pageId: pageIdSchema.optional(),
   filePath: z.string().optional(),
+  dirPath: z.string().optional(),
+  label: z.string().optional(),
   fullPage: z.boolean().optional(),
   format: z.enum(['png', 'jpeg', 'webp']).optional(),
-  quality: z.number().int().min(0).max(100).optional()
+  quality: z.number().int().min(0).max(100).optional(),
+  maxWidth: z.number().int().positive().optional(),
+  maxHeight: z.number().int().positive().optional(),
+  keep: z.number().int().positive().optional()
 });
 
 const consoleListSchema = z.object({
@@ -139,6 +216,12 @@ const consoleGetSchema = z.object({
   id: z.number().int().positive()
 });
 
+const consoleWaitSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  pattern: z.string().min(1),
+  type: z.string().optional()
+});
+
 const networkListSchema = z.object({
   pageId: pageIdSchema.optional(),
   limit: z.number().int().positive().optional(),
@@ -149,6 +232,13 @@ const networkGetSchema = z.object({
   id: z.number().int().positive(),
   requestFilePath: z.string().optional(),
   responseFilePath: z.string().optional()
+});
+
+const networkWaitSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  pattern: z.string().min(1),
+  method: z.string().optional(),
+  status: z.number().int().positive().optional()
 });
 
 const emulationSetSchema = z.object({
@@ -490,6 +580,82 @@ export class BrokerDaemon {
         };
       }
 
+      if (request.op === IPC_OP.PAGE_WAIT_SELECTOR) {
+        const payload = pageWaitSelectorSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.waitSelector(contextKeyHash, {
+              pageId: payload.pageId,
+              selector: payload.selector,
+              timeoutMs: context.timeoutMs
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.PAGE_WAIT_URL) {
+        const payload = pageWaitUrlSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.waitUrl(contextKeyHash, {
+              pageId: payload.pageId,
+              pattern: payload.pattern,
+              timeoutMs: context.timeoutMs
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.OBSERVE_STATE) {
+        const payload = observeStateSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.observeState(contextKeyHash, { pageId: payload.pageId });
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.OBSERVE_TARGETS) {
+        const payload = observeTargetsSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.observeTargets(contextKeyHash, {
+            pageId: payload.pageId,
+            limit: payload.limit,
+            onlyVisible: payload.onlyVisible
+          });
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
       if (request.op === IPC_OP.RUNTIME_EVAL) {
         const payload = runtimeEvalSchema.parse(request.payload);
         const data = await this.withContextAccess(
@@ -664,6 +830,168 @@ export class BrokerDaemon {
         };
       }
 
+      if (request.op === IPC_OP.INPUT_TYPE) {
+        const payload = inputTypeSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.typeText(contextKeyHash, {
+              pageId: payload.pageId,
+              text: payload.text,
+              delayMs: payload.delayMs
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.INPUT_MOUSE_MOVE) {
+        const payload = inputMouseMoveSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.mouseMove(contextKeyHash, {
+              pageId: payload.pageId,
+              x: payload.x,
+              y: payload.y,
+              steps: payload.steps
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.INPUT_CLICK) {
+        const payload = inputClickSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.mouseClick(contextKeyHash, {
+              pageId: payload.pageId,
+              x: payload.x,
+              y: payload.y,
+              button: payload.button,
+              count: payload.count,
+              delayMs: payload.delayMs
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.INPUT_MOUSE_DOWN) {
+        const payload = inputMouseDownSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.mouseDown(contextKeyHash, {
+              pageId: payload.pageId,
+              button: payload.button,
+              count: payload.count
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.INPUT_MOUSE_UP) {
+        const payload = inputMouseUpSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.mouseUp(contextKeyHash, {
+              pageId: payload.pageId,
+              button: payload.button,
+              count: payload.count
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.INPUT_DRAG) {
+        const payload = inputDragSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.mouseDrag(contextKeyHash, {
+              pageId: payload.pageId,
+              fromX: payload.fromX,
+              fromY: payload.fromY,
+              toX: payload.toX,
+              toY: payload.toY,
+              steps: payload.steps,
+              button: payload.button
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.INPUT_SCROLL) {
+        const payload = inputScrollSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.mouseScroll(contextKeyHash, {
+              pageId: payload.pageId,
+              dx: payload.dx,
+              dy: payload.dy
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
       if (request.op === IPC_OP.DIALOG_HANDLE) {
         const payload = dialogHandleSchema.parse(request.payload);
         const data = await this.withContextAccess(
@@ -710,9 +1038,14 @@ export class BrokerDaemon {
             return this.slotManager.screenshot(contextKeyHash, {
               pageId: payload.pageId,
               filePath: payload.filePath,
+              dirPath: payload.dirPath,
+              label: payload.label,
               fullPage: payload.fullPage,
               format: payload.format,
-              quality: payload.quality
+              quality: payload.quality,
+              maxWidth: payload.maxWidth,
+              maxHeight: payload.maxHeight,
+              keep: payload.keep
             });
           },
           { queue: true }
@@ -758,6 +1091,25 @@ export class BrokerDaemon {
         };
       }
 
+      if (request.op === IPC_OP.CONSOLE_WAIT) {
+        const payload = consoleWaitSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.waitConsoleMessage(contextKeyHash, {
+            pageId: payload.pageId,
+            pattern: payload.pattern,
+            type: payload.type as never,
+            timeoutMs: context.timeoutMs
+          });
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
       if (request.op === IPC_OP.NETWORK_LIST) {
         const payload = networkListSchema.parse(request.payload);
         const data = await this.withContextAccess(context, async (contextKeyHash) => {
@@ -783,6 +1135,26 @@ export class BrokerDaemon {
             id: payload.id,
             requestFilePath: payload.requestFilePath,
             responseFilePath: payload.responseFilePath
+          });
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.NETWORK_WAIT) {
+        const payload = networkWaitSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.waitNetworkRequest(contextKeyHash, {
+            pageId: payload.pageId,
+            pattern: payload.pattern,
+            method: payload.method,
+            status: payload.status,
+            timeoutMs: context.timeoutMs
           });
         });
 

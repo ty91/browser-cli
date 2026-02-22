@@ -7,6 +7,7 @@ import { writeDiagnostic, writeResponse, type OutputFormat } from './output.js';
 import { registerSessionCommands } from './commands/session.js';
 import { registerDaemonCommands } from './commands/daemon.js';
 import { registerPageCommands } from './commands/page.js';
+import { registerObserveCommands } from './commands/observe.js';
 import { registerElementCommands } from './commands/element.js';
 import { registerInputCommands } from './commands/input.js';
 import { registerDialogCommands } from './commands/dialog.js';
@@ -99,6 +100,7 @@ export const createProgram = (): Command => {
   registerSessionCommands(program, getContext, onResponse);
   registerDaemonCommands(program, getContext, onResponse);
   registerPageCommands(program, getContext, onResponse);
+  registerObserveCommands(program, getContext, onResponse);
   registerElementCommands(program, getContext, onResponse);
   registerInputCommands(program, getContext, onResponse);
   registerDialogCommands(program, getContext, onResponse);
@@ -122,6 +124,10 @@ export const createProgram = (): Command => {
           'CONTEXT_LOCK_TIMEOUT',
           'CONTEXT_LEASE_EXPIRED',
           'TIMEOUT',
+          'TARGET_OUT_OF_VIEW',
+          'TARGET_OBSCURED',
+          'TARGET_NOT_INTERACTABLE',
+          'ACTION_NO_EFFECT',
           'DAEMON_UNAVAILABLE',
           'IPC_PROTOCOL_ERROR',
           'INTERNAL_ERROR'
@@ -142,6 +148,7 @@ export const createProgram = (): Command => {
           examples: [
             'cdt session start',
             'cdt page open --url https://example.com',
+            'cdt observe state',
             'cdt runtime eval --function "() => document.title"',
             'cdt trace start --file ./trace.json'
           ]
