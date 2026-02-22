@@ -178,7 +178,7 @@ export class BrokerDaemon {
 
         const data = await this.runWithQueue(resolved.contextKeyHash, async () => {
           const slotResult = await this.slotManager.startSession(resolved.contextKeyHash, {
-            headless: payload.headless ?? true
+            headless: payload.headless ?? false
           });
 
           let session;

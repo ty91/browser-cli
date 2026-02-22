@@ -64,7 +64,7 @@ export class SessionService {
 
     try {
       const existing = await this.registry.getMetadata(resolved.contextKeyHash);
-      const headless = input.headless ?? true;
+      const headless = input.headless ?? false;
 
       const session = await this.registry.markRunning(resolved, {
         headless,

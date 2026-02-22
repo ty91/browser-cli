@@ -27,9 +27,9 @@ export class ContextResolver {
       return this.fromRaw(`group:${shareGroup}`, shareGroup, 'share-group');
     }
 
-    const fingerprint = this.buildFingerprint(input.caller);
-    if (fingerprint) {
-      return this.fromRaw(`fingerprint:${fingerprint}`, null, 'fingerprint');
+    const autoContextKey = this.buildAutoContextKey(input.caller);
+    if (autoContextKey) {
+      return this.fromRaw(`auto:${autoContextKey}`, null, 'fingerprint');
     }
 
     const fallback = `fallback:${Date.now()}:${Math.random().toString(16).slice(2)}`;
@@ -56,14 +56,21 @@ export class ContextResolver {
     };
   }
 
-  private buildFingerprint(caller: CallerContext): string {
-    const parts = [
-      String(caller.pid),
-      String(caller.ppid ?? 0),
-      caller.tty ?? 'no-tty',
-      caller.cwd
-    ];
+  private buildAutoContextKey(caller: CallerContext): string | null {
+    const tty = caller.tty?.trim();
+    if (tty) {
+      return `tty:${tty}`;
+    }
 
-    return parts.join('|');
+    const cwd = caller.cwd.trim();
+    if (cwd) {
+      return `cwd:${cwd}`;
+    }
+
+    if (caller.ppid && caller.ppid > 1) {
+      return `ppid:${caller.ppid}`;
+    }
+
+    return null;
   }
 }

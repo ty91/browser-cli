@@ -5,14 +5,11 @@ import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
 import { AppError } from '../../../shared/errors/AppError.js';
 import { sendDaemonCommand, type CommandContext } from './common.js';
 
-const parseHeadless = (opts: { headless?: boolean; headed?: boolean }): boolean => {
+export const parseHeadless = (opts: { headless?: boolean; headed?: boolean }): boolean => {
   if (opts.headed) {
     return false;
   }
-  if (opts.headless === false) {
-    return false;
-  }
-  return true;
+  return opts.headless === true;
 };
 
 export const registerSessionCommands = (
@@ -25,15 +22,15 @@ export const registerSessionCommands = (
   session
     .command('start')
     .description('Start or reuse current context session')
-    .option('--headless', 'Run in headless mode', true)
+    .option('--headless', 'Run in headless mode')
     .option('--headed', 'Run in headed mode')
     .option('--describe', 'Show command schema and examples')
     .action(async (opts: { headless?: boolean; headed?: boolean; describe?: boolean }) => {
       if (opts.describe) {
         await onResponse(true, {
           command: 'session start',
-          payload: { headless: 'boolean (default: true)' },
-          examples: ['cdt session start --headless', 'cdt session start --headed --share-group qa']
+          payload: { headless: 'boolean (default: false)' },
+          examples: ['cdt session start', 'cdt session start --headless --share-group qa']
         });
         return;
       }

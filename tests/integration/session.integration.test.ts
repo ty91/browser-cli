@@ -66,13 +66,13 @@ describe.skipIf(!hasChrome)('session integration', () => {
     };
 
     try {
-      const start1 = await runCli(['session', 'start', '--output', 'json'], env, cwd);
+      const start1 = await runCli(['session', 'start', '--headless', '--output', 'json'], env, cwd);
       expect(start1.code).toBe(0);
       const start1Body = parseEnvelope(start1.stdout);
       expect(start1Body.ok).toBe(true);
       expect(start1Body.data.reused).toBe(false);
 
-      const start2 = await runCli(['session', 'start', '--output', 'json'], env, cwd);
+      const start2 = await runCli(['session', 'start', '--headless', '--output', 'json'], env, cwd);
       expect(start2.code).toBe(0);
       const start2Body = parseEnvelope(start2.stdout);
       expect(start2Body.ok).toBe(true);
@@ -112,8 +112,8 @@ describe.skipIf(!hasChrome)('session integration', () => {
     };
 
     try {
-      const a = await runCli(['session', 'start', '--output', 'json'], envA, cwd);
-      const b = await runCli(['session', 'start', '--output', 'json'], envB, cwd);
+      const a = await runCli(['session', 'start', '--headless', '--output', 'json'], envA, cwd);
+      const b = await runCli(['session', 'start', '--headless', '--output', 'json'], envB, cwd);
 
       expect(a.code).toBe(0);
       expect(b.code).toBe(0);
@@ -159,7 +159,7 @@ describe.skipIf(!hasChrome)('session integration', () => {
     const dataUrl = `data:text/html,${encodeURIComponent(html)}`;
 
     try {
-      const start = await runCli(['session', 'start', '--output', 'json'], env, cwd);
+      const start = await runCli(['session', 'start', '--headless', '--output', 'json'], env, cwd);
       expect(start.code).toBe(0);
 
       const opened = await runCli(['page', 'open', '--url', dataUrl, '--output', 'json'], env, cwd);
@@ -251,6 +251,46 @@ describe.skipIf(!hasChrome)('session integration', () => {
       expect(listed.code).toBe(0);
       const pages = (parseEnvelope(listed.stdout).data as { pages: Array<{ id: number }> }).pages;
       expect(pages.some((item) => item.id === openedPage.id)).toBe(true);
+    } finally {
+      await runCli(['session', 'stop', '--output', 'json'], env, cwd);
+      await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it('reuses same context across sequential commands without CDT_CONTEXT_ID', async () => {
+    const cwd = process.cwd();
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), 'cdt-shellctx-'));
+
+    const env: NodeJS.ProcessEnv = {
+      ...process.env,
+      CDT_HOME: tempHome
+    };
+
+    delete env.CDT_CONTEXT_ID;
+
+    const html = '<html><head><title>Shell Context</title></head><body><h1>ok</h1></body></html>';
+    const dataUrl = `data:text/html,${encodeURIComponent(html)}`;
+
+    try {
+      const started = await runCli(['session', 'start', '--headless', '--output', 'json'], env, cwd);
+      expect(started.code).toBe(0);
+      const startedBody = parseEnvelope(started.stdout);
+      expect(startedBody.ok).toBe(true);
+      expect(startedBody.data.context.resolvedBy).toBe('fingerprint');
+
+      const opened = await runCli(['page', 'open', '--url', dataUrl, '--output', 'json'], env, cwd);
+      expect(opened.code).toBe(0);
+      const openedBody = parseEnvelope(opened.stdout);
+      expect(openedBody.ok).toBe(true);
+
+      const title = await runCli(
+        ['runtime', 'eval', '--function', '() => document.title', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(title.code).toBe(0);
+      expect((parseEnvelope(title.stdout).data as { value: string }).value).toBe('Shell Context');
     } finally {
       await runCli(['session', 'stop', '--output', 'json'], env, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
