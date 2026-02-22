@@ -89,6 +89,17 @@ export const registerPageCommands = (
     });
 
   page
+    .command('close')
+    .description('Close current/selected page')
+    .option('--page <id>', 'target page id (default: current page)')
+    .action(async (opts: { page?: string }) => {
+      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_CLOSE, {
+        pageId: toPageId(opts.page)
+      });
+      await onResponse(response.ok, response);
+    });
+
+  page
     .command('navigate')
     .description('Navigate current/selected page')
     .requiredOption('--url <url>', 'target url')
@@ -107,6 +118,31 @@ export const registerPageCommands = (
       const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_NAVIGATE, {
         pageId: toPageId(opts.page),
         url: opts.url
+      });
+      await onResponse(response.ok, response);
+    });
+
+  page
+    .command('resize')
+    .description('Resize viewport of current/selected page')
+    .requiredOption('--width <px>', 'viewport width')
+    .requiredOption('--height <px>', 'viewport height')
+    .option('--page <id>', 'target page id (default: current page)')
+    .action(async (opts: { page?: string; width: string; height: string }) => {
+      const width = Number(opts.width);
+      const height = Number(opts.height);
+
+      if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) {
+        throw new AppError('width/height must be positive integers.', {
+          code: ERROR_CODE.VALIDATION_ERROR,
+          suggestions: ['Use values like --width 1280 --height 720']
+        });
+      }
+
+      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_RESIZE, {
+        pageId: toPageId(opts.page),
+        width,
+        height
       });
       await onResponse(response.ok, response);
     });

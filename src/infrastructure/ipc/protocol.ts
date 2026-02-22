@@ -12,13 +12,30 @@ export const IPC_OP = {
   PAGE_OPEN: 'page.open',
   PAGE_LIST: 'page.list',
   PAGE_USE: 'page.use',
+  PAGE_CLOSE: 'page.close',
   PAGE_NAVIGATE: 'page.navigate',
+  PAGE_RESIZE: 'page.resize',
   PAGE_WAIT_TEXT: 'page.waitText',
   RUNTIME_EVAL: 'runtime.eval',
   ELEMENT_FILL: 'element.fill',
+  ELEMENT_FILL_FORM: 'element.fillForm',
   ELEMENT_CLICK: 'element.click',
+  ELEMENT_HOVER: 'element.hover',
+  ELEMENT_DRAG: 'element.drag',
+  ELEMENT_UPLOAD: 'element.upload',
   INPUT_KEY: 'input.key',
-  CAPTURE_SNAPSHOT: 'capture.snapshot'
+  DIALOG_HANDLE: 'dialog.handle',
+  CAPTURE_SNAPSHOT: 'capture.snapshot',
+  CAPTURE_SCREENSHOT: 'capture.screenshot',
+  CONSOLE_LIST: 'console.list',
+  CONSOLE_GET: 'console.get',
+  NETWORK_LIST: 'network.list',
+  NETWORK_GET: 'network.get',
+  EMULATION_SET: 'emulation.set',
+  EMULATION_RESET: 'emulation.reset',
+  TRACE_START: 'trace.start',
+  TRACE_STOP: 'trace.stop',
+  TRACE_INSIGHT: 'trace.insight'
 } as const;
 
 export type IpcOp = (typeof IPC_OP)[keyof typeof IPC_OP];

@@ -9,8 +9,13 @@ import { registerDaemonCommands } from './commands/daemon.js';
 import { registerPageCommands } from './commands/page.js';
 import { registerElementCommands } from './commands/element.js';
 import { registerInputCommands } from './commands/input.js';
+import { registerDialogCommands } from './commands/dialog.js';
 import { registerRuntimeCommands } from './commands/runtime.js';
 import { registerCaptureCommands } from './commands/capture.js';
+import { registerConsoleCommands } from './commands/console.js';
+import { registerNetworkCommands } from './commands/network.js';
+import { registerEmulationCommands } from './commands/emulation.js';
+import { registerTraceCommands } from './commands/trace.js';
 
 export type ProgramResult = {
   exitCode: number;
@@ -96,8 +101,13 @@ export const createProgram = (): Command => {
   registerPageCommands(program, getContext, onResponse);
   registerElementCommands(program, getContext, onResponse);
   registerInputCommands(program, getContext, onResponse);
+  registerDialogCommands(program, getContext, onResponse);
   registerRuntimeCommands(program, getContext, onResponse);
   registerCaptureCommands(program, getContext, onResponse);
+  registerConsoleCommands(program, getContext, onResponse);
+  registerNetworkCommands(program, getContext, onResponse);
+  registerEmulationCommands(program, getContext, onResponse);
+  registerTraceCommands(program, getContext, onResponse);
 
   program.command('errors').action(async () => {
     await onResponse(true, {
@@ -132,7 +142,8 @@ export const createProgram = (): Command => {
           examples: [
             'cdt session start',
             'cdt page open --url https://example.com',
-            'cdt runtime eval --function "() => document.title"'
+            'cdt runtime eval --function "() => document.title"',
+            'cdt trace start --file ./trace.json'
           ]
         },
         meta: { durationMs: 0 }

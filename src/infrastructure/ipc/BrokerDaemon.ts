@@ -3,30 +3,34 @@ import path from 'node:path';
 
 import { z } from 'zod';
 
-import { SessionService } from '../../application/session/SessionService.js';
 import { ContextResolver } from '../../application/context/ContextResolver.js';
+import { SessionService } from '../../application/session/SessionService.js';
 import { AppError } from '../../shared/errors/AppError.js';
 import { ERROR_CODE } from '../../shared/errors/ErrorCode.js';
-import type { RequestEnvelope, ResponseEnvelope } from '../../shared/schema/envelopes.js';
 import { daemonContextSchema } from '../../shared/schema/common.js';
+import type { RequestEnvelope, ResponseEnvelope } from '../../shared/schema/envelopes.js';
 import { BrowserSlotManager } from '../cdp/BrowserSlotManager.js';
+import { LockFile } from '../store/LockFile.js';
 import { PidFile } from '../store/PidFile.js';
 import {
-  resolveCdtHome,
   resolveBrokerDir,
+  resolveCdtHome,
   resolveDaemonLockPath,
   resolveDaemonPidPath,
   resolveDaemonSocketPath
 } from '../store/paths.js';
-import { LockFile } from '../store/LockFile.js';
-import { IPC_OP } from './protocol.js';
 import { JsonlSocketServer } from './JsonlSocketServer.js';
+import { IPC_OP } from './protocol.js';
 
 export type BrokerDaemonOptions = {
   homeDir?: string;
 };
 
 const pageIdSchema = z.number().int().positive();
+
+const sessionStartSchema = z.object({
+  headless: z.boolean().optional()
+});
 
 const pageOpenSchema = z.object({
   url: z.string().min(1).optional()
@@ -36,9 +40,19 @@ const pageUseSchema = z.object({
   pageId: pageIdSchema
 });
 
+const pageCloseSchema = z.object({
+  pageId: pageIdSchema.optional()
+});
+
 const pageNavigateSchema = z.object({
   pageId: pageIdSchema.optional(),
   url: z.string().min(1)
+});
+
+const pageResizeSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  width: z.number().int().positive(),
+  height: z.number().int().positive()
 });
 
 const pageWaitTextSchema = z.object({
@@ -57,9 +71,39 @@ const elementFillSchema = z.object({
   value: z.string()
 });
 
+const elementFillFormSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  entries: z
+    .array(
+      z.object({
+        selector: z.string().min(1),
+        value: z.string()
+      })
+    )
+    .min(1)
+});
+
 const elementClickSchema = z.object({
   pageId: pageIdSchema.optional(),
   selector: z.string().min(1)
+});
+
+const elementHoverSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  selector: z.string().min(1)
+});
+
+const elementDragSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  fromSelector: z.string().min(1),
+  toSelector: z.string().min(1),
+  steps: z.number().int().positive().optional()
+});
+
+const elementUploadSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  selector: z.string().min(1),
+  filePath: z.string().min(1)
 });
 
 const inputKeySchema = z.object({
@@ -67,12 +111,82 @@ const inputKeySchema = z.object({
   key: z.string().min(1)
 });
 
+const dialogHandleSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  action: z.enum(['accept', 'dismiss']),
+  promptText: z.string().optional()
+});
+
 const snapshotSchema = z.object({
   pageId: pageIdSchema.optional()
 });
 
-const sessionStartSchema = z.object({
-  headless: z.boolean().optional()
+const screenshotSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  filePath: z.string().optional(),
+  fullPage: z.boolean().optional(),
+  format: z.enum(['png', 'jpeg', 'webp']).optional(),
+  quality: z.number().int().min(0).max(100).optional()
+});
+
+const consoleListSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  limit: z.number().int().positive().optional(),
+  type: z.string().optional()
+});
+
+const consoleGetSchema = z.object({
+  id: z.number().int().positive()
+});
+
+const networkListSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  limit: z.number().int().positive().optional(),
+  method: z.string().optional()
+});
+
+const networkGetSchema = z.object({
+  id: z.number().int().positive(),
+  requestFilePath: z.string().optional(),
+  responseFilePath: z.string().optional()
+});
+
+const emulationSetSchema = z.object({
+  viewport: z
+    .object({
+      width: z.number().int().positive(),
+      height: z.number().int().positive(),
+      deviceScaleFactor: z.number().positive().optional(),
+      isMobile: z.boolean().optional(),
+      hasTouch: z.boolean().optional(),
+      isLandscape: z.boolean().optional()
+    })
+    .nullable()
+    .optional(),
+  userAgent: z.string().nullable().optional(),
+  networkProfile: z.string().nullable().optional(),
+  geolocation: z
+    .object({
+      latitude: z.number(),
+      longitude: z.number(),
+      accuracy: z.number().nonnegative().optional()
+    })
+    .nullable()
+    .optional()
+});
+
+const traceStartSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  filePath: z.string().optional()
+});
+
+const traceStopSchema = z.object({
+  filePath: z.string().optional()
+});
+
+const traceInsightSchema = z.object({
+  filePath: z.string().optional(),
+  insightName: z.string().optional()
 });
 
 export class BrokerDaemon {
@@ -129,6 +243,7 @@ export class BrokerDaemon {
     if (this.shuttingDown) {
       return;
     }
+
     this.shuttingDown = true;
 
     if (this.socketServer) {
@@ -244,10 +359,10 @@ export class BrokerDaemon {
       }
 
       if (request.op === IPC_OP.PAGE_LIST) {
-        const resolved = this.contextResolver.resolve(context);
-        await this.sessionService.touch(context);
-        const data = await this.slotManager.listPages(resolved.contextKeyHash);
-        await this.sessionService.updateCurrentPage(context, data.selectedPageId);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.listPages(contextKeyHash);
+        });
+
         return {
           id: request.id,
           ok: true,
@@ -258,12 +373,16 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.PAGE_OPEN) {
         const payload = pageOpenSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.openPage(contextKeyHash, {
-            url: payload.url,
-            timeoutMs: context.timeoutMs
-          });
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.openPage(contextKeyHash, {
+              url: payload.url,
+              timeoutMs: context.timeoutMs
+            });
+          },
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -275,9 +394,27 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.PAGE_USE) {
         const payload = pageUseSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.usePage(contextKeyHash, payload.pageId);
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => this.slotManager.usePage(contextKeyHash, payload.pageId),
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.PAGE_CLOSE) {
+        const payload = pageCloseSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => this.slotManager.closePage(contextKeyHash, { pageId: payload.pageId }),
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -289,13 +426,39 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.PAGE_NAVIGATE) {
         const payload = pageNavigateSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.navigatePage(contextKeyHash, {
-            pageId: payload.pageId,
-            url: payload.url,
-            timeoutMs: context.timeoutMs
-          });
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.navigatePage(contextKeyHash, {
+              pageId: payload.pageId,
+              url: payload.url,
+              timeoutMs: context.timeoutMs
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.PAGE_RESIZE) {
+        const payload = pageResizeSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.resizePage(contextKeyHash, {
+              pageId: payload.pageId,
+              width: payload.width,
+              height: payload.height
+            });
+          },
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -307,13 +470,17 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.PAGE_WAIT_TEXT) {
         const payload = pageWaitTextSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.waitText(contextKeyHash, {
-            pageId: payload.pageId,
-            text: payload.text,
-            timeoutMs: context.timeoutMs
-          });
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.waitText(contextKeyHash, {
+              pageId: payload.pageId,
+              text: payload.text,
+              timeoutMs: context.timeoutMs
+            });
+          },
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -325,12 +492,16 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.RUNTIME_EVAL) {
         const payload = runtimeEvalSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.evaluate(contextKeyHash, {
-            pageId: payload.pageId,
-            functionSource: payload.functionSource
-          });
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.evaluate(contextKeyHash, {
+              pageId: payload.pageId,
+              functionSource: payload.functionSource
+            });
+          },
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -342,13 +513,38 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.ELEMENT_FILL) {
         const payload = elementFillSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.fillElement(contextKeyHash, {
-            pageId: payload.pageId,
-            selector: payload.selector,
-            value: payload.value
-          });
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.fillElement(contextKeyHash, {
+              pageId: payload.pageId,
+              selector: payload.selector,
+              value: payload.value
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.ELEMENT_FILL_FORM) {
+        const payload = elementFillFormSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.fillForm(contextKeyHash, {
+              pageId: payload.pageId,
+              entries: payload.entries
+            });
+          },
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -360,13 +556,84 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.ELEMENT_CLICK) {
         const payload = elementClickSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.clickElement(contextKeyHash, {
-            pageId: payload.pageId,
-            selector: payload.selector,
-            timeoutMs: context.timeoutMs
-          });
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.clickElement(contextKeyHash, {
+              pageId: payload.pageId,
+              selector: payload.selector,
+              timeoutMs: context.timeoutMs
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.ELEMENT_HOVER) {
+        const payload = elementHoverSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.hoverElement(contextKeyHash, {
+              pageId: payload.pageId,
+              selector: payload.selector,
+              timeoutMs: context.timeoutMs
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.ELEMENT_DRAG) {
+        const payload = elementDragSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.dragElement(contextKeyHash, {
+              pageId: payload.pageId,
+              fromSelector: payload.fromSelector,
+              toSelector: payload.toSelector,
+              steps: payload.steps
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.ELEMENT_UPLOAD) {
+        const payload = elementUploadSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.uploadFile(contextKeyHash, {
+              pageId: payload.pageId,
+              selector: payload.selector,
+              filePath: payload.filePath
+            });
+          },
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -378,12 +645,38 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.INPUT_KEY) {
         const payload = inputKeySchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.pressKey(contextKeyHash, {
-            pageId: payload.pageId,
-            key: payload.key
-          });
-        });
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.pressKey(contextKeyHash, {
+              pageId: payload.pageId,
+              key: payload.key
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.DIALOG_HANDLE) {
+        const payload = dialogHandleSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.handleDialog(contextKeyHash, {
+              pageId: payload.pageId,
+              action: payload.action,
+              promptText: payload.promptText
+            });
+          },
+          { queue: true }
+        );
 
         return {
           id: request.id,
@@ -395,9 +688,193 @@ export class BrokerDaemon {
 
       if (request.op === IPC_OP.CAPTURE_SNAPSHOT) {
         const payload = snapshotSchema.parse(request.payload);
-        const data = await this.withContextMutation(context, async (contextKeyHash) => {
-          return this.slotManager.snapshot(contextKeyHash, {
-            pageId: payload.pageId
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => this.slotManager.snapshot(contextKeyHash, { pageId: payload.pageId }),
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.CAPTURE_SCREENSHOT) {
+        const payload = screenshotSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.screenshot(contextKeyHash, {
+              pageId: payload.pageId,
+              filePath: payload.filePath,
+              fullPage: payload.fullPage,
+              format: payload.format,
+              quality: payload.quality
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.CONSOLE_LIST) {
+        const payload = consoleListSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.listConsoleMessages(contextKeyHash, {
+            pageId: payload.pageId,
+            limit: payload.limit,
+            type: payload.type as never
+          });
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.CONSOLE_GET) {
+        const payload = consoleGetSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.getConsoleMessage(contextKeyHash, payload.id);
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.NETWORK_LIST) {
+        const payload = networkListSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.listNetworkRequests(contextKeyHash, {
+            pageId: payload.pageId,
+            limit: payload.limit,
+            method: payload.method
+          });
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.NETWORK_GET) {
+        const payload = networkGetSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.getNetworkRequest(contextKeyHash, {
+            id: payload.id,
+            requestFilePath: payload.requestFilePath,
+            responseFilePath: payload.responseFilePath
+          });
+        });
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.EMULATION_SET) {
+        const payload = emulationSetSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.setEmulation(contextKeyHash, {
+              viewport: payload.viewport,
+              userAgent: payload.userAgent,
+              networkProfile: payload.networkProfile,
+              geolocation: payload.geolocation
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.EMULATION_RESET) {
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => this.slotManager.resetEmulation(contextKeyHash),
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.TRACE_START) {
+        const payload = traceStartSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.traceStart(contextKeyHash, {
+              pageId: payload.pageId,
+              filePath: payload.filePath
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.TRACE_STOP) {
+        const payload = traceStopSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => this.slotManager.traceStop(contextKeyHash, { filePath: payload.filePath }),
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.TRACE_INSIGHT) {
+        const payload = traceInsightSchema.parse(request.payload);
+        const data = await this.withContextAccess(context, async (contextKeyHash) => {
+          return this.slotManager.traceInsight(contextKeyHash, {
+            filePath: payload.filePath,
+            insightName: payload.insightName
           });
         });
 
@@ -441,13 +918,14 @@ export class BrokerDaemon {
     }
   }
 
-  private async withContextMutation<T>(
+  private async withContextAccess<T>(
     context: z.infer<typeof daemonContextSchema>,
-    task: (contextKeyHash: string) => Promise<T>
+    task: (contextKeyHash: string) => Promise<T>,
+    options?: { queue?: boolean }
   ): Promise<T> {
     const resolved = this.contextResolver.resolve(context);
 
-    const data = await this.runWithQueue(resolved.contextKeyHash, async () => {
+    const execute = async (): Promise<T> => {
       await this.sessionService.touch(context);
       const result = await task(resolved.contextKeyHash);
 
@@ -455,9 +933,13 @@ export class BrokerDaemon {
       await this.sessionService.updateCurrentPage(context, selectedPageId);
 
       return result;
-    });
+    };
 
-    return data;
+    if (options?.queue) {
+      return this.runWithQueue(resolved.contextKeyHash, execute);
+    }
+
+    return execute();
   }
 
   private async runWithQueue<T>(contextKeyHash: string, task: () => Promise<T>): Promise<T> {
