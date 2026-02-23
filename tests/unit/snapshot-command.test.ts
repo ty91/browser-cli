@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { applySnapshotLineLimit, buildSnapshotText } from '../../src/interface/cli/commands/snapshot.js';
 
 describe('snapshot command helpers', () => {
-  it('builds do-not-commit style text with page metadata', () => {
+  it('builds snapshot text with page metadata and raw body', () => {
     const text = buildSnapshotText({
       page: {
         id: 1,
@@ -19,7 +19,8 @@ describe('snapshot command helpers', () => {
       }
     });
 
-    expect(text).toContain('snapshot (do-not-commit)');
+    expect(text).not.toContain('snapshot (do-not-commit)');
+    expect(text.startsWith('url: https://example.com')).toBe(true);
     expect(text).toContain('url: https://example.com');
     expect(text).toContain('title: Example Domain');
     expect(text).toContain('heading "Example Domain"');

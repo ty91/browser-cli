@@ -193,7 +193,7 @@ describe.skipIf(!hasChrome)('screenshot command', () => {
 });
 
 describe.skipIf(!hasChrome)('snapshot command', () => {
-  it('prints playwright aria snapshot and truncates after 1500 lines', async () => {
+  it('prints ref-based snapshot and truncates after 1500 lines', async () => {
     const cwd = process.cwd();
     const tempHome = await mkdtemp(path.join(os.tmpdir(), 'browser-snapshot-'));
 
@@ -216,8 +216,9 @@ describe.skipIf(!hasChrome)('snapshot command', () => {
 
       const snapshot = await runCli(['snapshot'], env, cwd);
       expect(snapshot.code).toBe(0);
-      expect(snapshot.stdout).toContain('snapshot (do-not-commit)');
-      expect(snapshot.stdout.toLowerCase()).toContain('button');
+      expect(snapshot.stdout).not.toContain('snapshot (do-not-commit)');
+      expect(snapshot.stdout).toContain('url:');
+      expect(snapshot.stdout).toMatch(/\[ref=e\d+\]/);
       const lines = snapshot.stdout.split('\n');
       expect(lines.length).toBeLessThanOrEqual(1500);
 
@@ -230,6 +231,9 @@ describe.skipIf(!hasChrome)('snapshot command', () => {
       expect(body.ok).toBe(true);
       const snapshotData = (body.data as { snapshot?: Record<string, unknown> })?.snapshot ?? {};
       expect(snapshotData.format).toBe('playwright-aria');
+      const snapshotText = snapshotData.text;
+      expect(typeof snapshotText).toBe('string');
+      expect(String(snapshotText)).toMatch(/\[ref=e\d+\]/);
       const truncated = snapshotData.truncated;
       const totalLines = snapshotData.totalLines;
       const outputLines = snapshotData.outputLines;

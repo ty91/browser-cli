@@ -1139,12 +1139,26 @@ export class BrowserSlotManager {
     const slot = this.ensureSlot(contextKeyHash);
     const { pageId, page } = this.resolvePage(slot, input.pageId);
 
-    const raw = await page.locator('html').ariaSnapshot();
-    const nodeCount = raw
-      .split('\n')
-      .map((line) => line.trimStart())
-      .filter((line) => line.startsWith('- '))
-      .length;
+    let raw: string;
+    try {
+      const snapshotResult = await (page as Page & {
+        _snapshotForAI?: (options: { track: 'response' }) => Promise<{ full?: unknown } | null>;
+      })._snapshotForAI?.({
+        track: 'response'
+      });
+      if (!snapshotResult || typeof snapshotResult.full !== 'string') {
+        throw new Error('Playwright _snapshotForAI returned invalid payload.');
+      }
+      raw = snapshotResult.full;
+    } catch (error) {
+      throw new AppError('Failed to capture ref-based snapshot from Playwright internals.', {
+        code: ERROR_CODE.INTERNAL_ERROR,
+        details: { reason: error instanceof Error ? error.message : String(error) },
+        suggestions: ['Restart browser session: browser stop && browser start', 'Verify Playwright runtime compatibility.']
+      });
+    }
+
+    const nodeCount = (raw.match(/\[ref=[^\]]+\]/g) ?? []).length;
 
     return {
       page: await this.toPageSummary(slot, pageId, page),

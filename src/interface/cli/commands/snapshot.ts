@@ -81,7 +81,7 @@ const parseSnapshotAriaData = (input: unknown): SnapshotAriaData => {
 };
 
 export const buildSnapshotText = (data: SnapshotAriaData): string =>
-  ['snapshot (do-not-commit)', `url: ${data.page.url}`, `title: ${data.page.title}`, '', data.snapshot.raw].join('\n');
+  [`url: ${data.page.url}`, `title: ${data.page.title}`, '', data.snapshot.raw].join('\n');
 
 export const applySnapshotLineLimit = (text: string, maxLines = SNAPSHOT_MAX_LINES): SnapshotTextResult => {
   if (!Number.isInteger(maxLines) || maxLines <= 0) {
