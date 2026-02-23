@@ -22,6 +22,7 @@ import { registerConsoleCommands } from './commands/console.js';
 import { registerNetworkCommands } from './commands/network.js';
 import { registerEmulationCommands } from './commands/emulation.js';
 import { registerTraceCommands } from './commands/trace.js';
+import { CLI_VERSION } from '../../shared/version.js';
 
 export type ProgramResult = {
   exitCode: number;
@@ -35,6 +36,7 @@ type GlobalOptions = {
   describe?: boolean;
   debug?: boolean;
   home?: string;
+  version?: boolean;
 };
 
 const COMMANDER_HELP_CODES = new Set(['commander.helpDisplayed', 'commander.version']);
@@ -153,6 +155,15 @@ const toValidationEnvelope = (message: string): RenderableResponse =>
 
 const stripCommanderPrefix = (message: string): string => message.replace(/^error:\s*/i, '').trim();
 
+const writeVersion = (format: OutputFormat): void => {
+  if (format === 'json') {
+    process.stdout.write(`${JSON.stringify({ version: CLI_VERSION })}\n`);
+    return;
+  }
+
+  process.stdout.write(`${CLI_VERSION}\n`);
+};
+
 const applyCommanderParsingConfig = (command: Command): void => {
   command.exitOverride();
   command.configureOutput({
@@ -178,6 +189,7 @@ export const createProgram = (): Command => {
   program
     .name('browser')
     .description('Chrome DevTools style browser control CLI')
+    .option('-V, --version', 'show current version')
     .option('--output <format>', 'output format: json|text', 'text')
     .option('--share-group <name>', 'explicit context sharing group')
     .option('--context-id <id>', 'manual context routing override')
@@ -287,8 +299,21 @@ export const createProgram = (): Command => {
     });
   });
 
+  program
+    .command('version')
+    .description('print current version')
+    .action(async () => {
+      const options = program.opts<GlobalOptions>();
+      writeVersion(options.output === 'json' ? 'json' : 'text');
+    });
+
   program.action(async () => {
     const options = program.opts<GlobalOptions>();
+    if (options.version) {
+      writeVersion(options.output === 'json' ? 'json' : 'text');
+      return;
+    }
+
     if (options.describe) {
       await onResponse(true, {
         id: 'root-describe',

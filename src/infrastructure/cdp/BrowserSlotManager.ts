@@ -339,7 +339,7 @@ export class BrowserSlotManager {
       throw new AppError(`Page ${pageId} does not exist in current context.`, {
         code: ERROR_CODE.PAGE_NOT_FOUND,
         details: { pageId, contextKeyHash },
-        suggestions: ['Run: cdt page list --output json', 'Then choose an existing page id with cdt page use --page <id>']
+        suggestions: ['Run: browser page list --output json', 'Then choose an existing page id with browser page use --page <id>']
       });
     }
 
@@ -1178,7 +1178,7 @@ export class BrowserSlotManager {
     if (!pageId) {
       throw new AppError('No selected page in current context.', {
         code: ERROR_CODE.PAGE_NOT_FOUND,
-        suggestions: ['Run: cdt page list --output json']
+        suggestions: ['Run: browser page list --output json']
       });
     }
 
@@ -1187,7 +1187,7 @@ export class BrowserSlotManager {
       throw new AppError('No open dialog for this page.', {
         code: ERROR_CODE.DIALOG_NOT_OPEN,
         details: { pageId },
-        suggestions: ['Trigger dialog first, then run: cdt dialog handle --action accept|dismiss']
+        suggestions: ['Trigger dialog first, then run: browser dialog handle --action accept|dismiss']
       });
     }
 
@@ -1373,7 +1373,7 @@ export class BrowserSlotManager {
       throw new AppError(`Console message ${id} was not found.`, {
         code: ERROR_CODE.PAGE_NOT_FOUND,
         details: { id },
-        suggestions: ['Run: cdt console list --output json']
+        suggestions: ['Run: browser console list --output json']
       });
     }
 
@@ -1411,7 +1411,7 @@ export class BrowserSlotManager {
     throw new AppError(`Timed out waiting for console pattern: ${input.pattern}`, {
       code: ERROR_CODE.TIMEOUT,
       details: { pattern: input.pattern, pageId: input.pageId, type: input.type },
-      suggestions: ['Increase timeout: --timeout <ms>', 'Run: cdt console list --output json']
+      suggestions: ['Increase timeout: --timeout <ms>', 'Run: browser console list --output json']
     });
   }
 
@@ -1449,7 +1449,7 @@ export class BrowserSlotManager {
       throw new AppError(`Network request ${input.id} was not found.`, {
         code: ERROR_CODE.NETWORK_REQUEST_NOT_FOUND,
         details: { id: input.id },
-        suggestions: ['Run: cdt network list --output json']
+        suggestions: ['Run: browser network list --output json']
       });
     }
 
@@ -1500,7 +1500,7 @@ export class BrowserSlotManager {
     throw new AppError(`Timed out waiting for network pattern: ${input.pattern}`, {
       code: ERROR_CODE.TIMEOUT,
       details: { pattern: input.pattern, pageId: input.pageId, method: input.method, status: input.status },
-      suggestions: ['Increase timeout: --timeout <ms>', 'Run: cdt network list --output json']
+      suggestions: ['Increase timeout: --timeout <ms>', 'Run: browser network list --output json']
     });
   }
 
@@ -1565,7 +1565,7 @@ export class BrowserSlotManager {
       throw new AppError('Trace is already running for this context.', {
         code: ERROR_CODE.SESSION_ALREADY_RUNNING,
         details: { trace: slot.trace },
-        suggestions: ['Stop current trace first: cdt trace stop']
+        suggestions: ['Stop current trace first: browser trace stop']
       });
     }
 
@@ -1626,7 +1626,7 @@ export class BrowserSlotManager {
     if (!slot.trace) {
       throw new AppError('No active trace for current context.', {
         code: ERROR_CODE.SESSION_NOT_FOUND,
-        suggestions: ['Start one first: cdt trace start']
+        suggestions: ['Start one first: browser trace start']
       });
     }
 
@@ -1636,7 +1636,7 @@ export class BrowserSlotManager {
       throw new AppError('Tracing page is no longer available.', {
         code: ERROR_CODE.PAGE_NOT_FOUND,
         details: { pageId: trace.pageId },
-        suggestions: ['Run: cdt trace start again on an active page.']
+        suggestions: ['Run: browser trace start again on an active page.']
       });
     }
 
@@ -1714,7 +1714,7 @@ export class BrowserSlotManager {
       throw new AppError('Unable to read trace file.', {
         code: ERROR_CODE.VALIDATION_ERROR,
         details: { filePath, reason: error instanceof Error ? error.message : String(error) },
-        suggestions: ['Run trace capture first: cdt trace start && cdt trace stop', 'Or pass a valid --file path']
+        suggestions: ['Run trace capture first: browser trace start && browser trace stop', 'Or pass a valid --file path']
       });
     }
 
@@ -1891,14 +1891,14 @@ export class BrowserSlotManager {
       throw new AppError(`Target coordinates are outside interactable viewport: (${x}, ${y})`, {
         code: ERROR_CODE.TARGET_OUT_OF_VIEW,
         details: { pageId, x, y },
-        suggestions: ['Run: cdt observe state --output json', 'Use coordinates within viewport bounds.']
+        suggestions: ['Run: browser observe state --output json', 'Use coordinates within viewport bounds.']
       });
     }
 
     throw new AppError(`Target at (${x}, ${y}) is not interactable.`, {
       code: ERROR_CODE.TARGET_NOT_INTERACTABLE,
       details: { pageId, x, y, reason: pointCheck.reason, tag: pointCheck.tag ?? null },
-      suggestions: ['Scroll or adjust coordinates.', 'Use: cdt observe targets --only-visible']
+      suggestions: ['Scroll or adjust coordinates.', 'Use: browser observe targets --only-visible']
     });
   }
 
@@ -2354,7 +2354,7 @@ export class BrowserSlotManager {
         details: { networkProfile },
         suggestions: [
           'Use one of: Slow 3G, Fast 3G, Slow 4G, Fast 4G',
-          'Or clear with: cdt emulation reset'
+          'Or clear with: browser emulation reset'
         ]
       });
     }
@@ -2387,7 +2387,7 @@ export class BrowserSlotManager {
       throw new AppError('No selected page in current context.', {
         code: ERROR_CODE.PAGE_NOT_FOUND,
         details: { contextKeyHash: slot.contextKeyHash },
-        suggestions: ['Run: cdt page open --url https://example.com', 'Or select one with cdt page use --page <id>']
+        suggestions: ['Run: browser page open --url https://example.com', 'Or select one with browser page use --page <id>']
       });
     }
 
@@ -2396,7 +2396,7 @@ export class BrowserSlotManager {
       throw new AppError(`Page ${pageId} does not exist in current context.`, {
         code: ERROR_CODE.PAGE_NOT_FOUND,
         details: { contextKeyHash: slot.contextKeyHash, pageId },
-        suggestions: ['Run: cdt page list --output json', 'Then select a valid page with cdt page use --page <id>']
+        suggestions: ['Run: browser page list --output json', 'Then select a valid page with browser page use --page <id>']
       });
     }
 

@@ -322,7 +322,7 @@ export class BrokerDaemon {
       throw new AppError('Daemon already running.', {
         code: ERROR_CODE.SESSION_ALREADY_RUNNING,
         details: { pidFile: resolveDaemonPidPath(this.homeDir) },
-        suggestions: ['Use existing daemon or stop it first: cdt daemon stop']
+        suggestions: ['Use existing daemon or stop it first: browser daemon stop']
       });
     }
 
@@ -1398,7 +1398,7 @@ export class BrokerDaemon {
       throw new AppError(`Unsupported operation: ${request.op}`, {
         code: ERROR_CODE.VALIDATION_ERROR,
         details: { op: request.op },
-        suggestions: ['Run: cdt --help']
+        suggestions: ['Run: browser --help']
       });
     } catch (error) {
       const appError =

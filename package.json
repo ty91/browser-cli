@@ -1,11 +1,11 @@
 {
-  "name": "cdt",
+  "name": "browser-cli",
   "version": "0.1.0",
   "description": "CLI browser control with daemon/IPC session core",
   "type": "module",
   "bin": {
     "browser": "dist/bin/cdt.js",
-    "cdt-daemon": "dist/bin/cdt-daemon.js"
+    "browser-daemon": "dist/bin/cdt-daemon.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -17,6 +17,10 @@ type CliEnvelope = {
   };
 };
 
+type VersionPayload = {
+  version: string;
+};
+
 const runCli = async (args: string[], env: NodeJS.ProcessEnv, cwd: string): Promise<CliResult> => {
   const rootDir = path.resolve(cwd);
   const tsxCli = path.join(rootDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
@@ -51,8 +55,35 @@ const runCli = async (args: string[], env: NodeJS.ProcessEnv, cwd: string): Prom
 };
 
 const parseEnvelope = (stdout: string): CliEnvelope => JSON.parse(stdout) as CliEnvelope;
+const parseVersionPayload = (stdout: string): VersionPayload => JSON.parse(stdout) as VersionPayload;
 
 describe('help output behavior', () => {
+  it('prints version using command and global flag', async () => {
+    const cwd = process.cwd();
+    const env = { ...process.env };
+
+    const versionCommand = await runCli(['version'], env, cwd);
+    expect(versionCommand.code).toBe(0);
+    expect(versionCommand.stdout).toBe('0.1.0');
+
+    const versionFlag = await runCli(['--version'], env, cwd);
+    expect(versionFlag.code).toBe(0);
+    expect(versionFlag.stdout).toBe('0.1.0');
+  });
+
+  it('prints json version payload when requested', async () => {
+    const cwd = process.cwd();
+    const env = { ...process.env };
+
+    const versionCommand = await runCli(['version', '--output', 'json'], env, cwd);
+    expect(versionCommand.code).toBe(0);
+    expect(parseVersionPayload(versionCommand.stdout)).toEqual({ version: '0.1.0' });
+
+    const versionFlag = await runCli(['--version', '--output', 'json'], env, cwd);
+    expect(versionFlag.code).toBe(0);
+    expect(parseVersionPayload(versionFlag.stdout)).toEqual({ version: '0.1.0' });
+  });
+
   it('prints help for root and help alias', async () => {
     const cwd = process.cwd();
     const env = { ...process.env };
