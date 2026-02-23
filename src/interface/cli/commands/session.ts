@@ -10,6 +10,46 @@ export const parseHeadless = (opts: { headless?: boolean; headed?: boolean }): b
   return opts.headless === true;
 };
 
+const formatPageValue = (value: unknown): string => {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? String(value) : 'none';
+};
+
+const formatStartText = (data: unknown): string => {
+  const payload = (data ?? {}) as {
+    reused?: boolean;
+    context?: { contextKeyHash?: string };
+    runtime?: { selectedPageId?: number | null };
+    session?: { currentPageId?: number | null };
+  };
+
+  const page = payload.runtime?.selectedPageId ?? payload.session?.currentPageId ?? null;
+  return [
+    payload.reused === true ? 'session reused' : 'session started',
+    `context: ${payload.context?.contextKeyHash ?? '-'}`,
+    `page: ${formatPageValue(page)}`
+  ].join('\n');
+};
+
+const formatStatusText = (data: unknown): string => {
+  const payload = (data ?? {}) as {
+    context?: { contextKeyHash?: string };
+    session?: { status?: string; currentPageId?: number | null };
+    runtime?: { selectedPageId?: number | null };
+  };
+  const status = typeof payload.session?.status === 'string' ? payload.session.status : 'unknown';
+  const page = payload.runtime?.selectedPageId ?? payload.session?.currentPageId ?? null;
+
+  return [`session ${status}`, `context: ${payload.context?.contextKeyHash ?? '-'}`, `page: ${formatPageValue(page)}`].join('\n');
+};
+
+const formatStopText = (data: unknown): string => {
+  const payload = (data ?? {}) as {
+    context?: { contextKeyHash?: string };
+  };
+
+  return ['session stopped', `context: ${payload.context?.contextKeyHash ?? '-'}`].join('\n');
+};
+
 export const registerSessionCommands = (
   root: Command,
   getCtx: () => CommandContext,
@@ -35,7 +75,12 @@ export const registerSessionCommands = (
       const response = await sendDaemonCommand(ctx, IPC_OP.SESSION_START, {
         headless: parseHeadless(opts)
       });
-      await onResponse(response.ok, response);
+      if (!response.ok) {
+        await onResponse(false, response);
+        return;
+      }
+
+      await onResponse(true, { ...response, text: formatStartText(response.data) });
     });
 
   root
@@ -54,7 +99,12 @@ export const registerSessionCommands = (
 
       const ctx = getCtx();
       const response = await sendDaemonCommand(ctx, IPC_OP.SESSION_STATUS, {});
-      await onResponse(response.ok, response);
+      if (!response.ok) {
+        await onResponse(false, response);
+        return;
+      }
+
+      await onResponse(true, { ...response, text: formatStatusText(response.data) });
     });
 
   root
@@ -73,6 +123,11 @@ export const registerSessionCommands = (
 
       const ctx = getCtx();
       const response = await sendDaemonCommand(ctx, IPC_OP.SESSION_STOP, {});
-      await onResponse(response.ok, response);
+      if (!response.ok) {
+        await onResponse(false, response);
+        return;
+      }
+
+      await onResponse(true, { ...response, text: formatStopText(response.data) });
     });
 };

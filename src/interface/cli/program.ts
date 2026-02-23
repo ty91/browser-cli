@@ -1,9 +1,8 @@
 import { Command } from 'commander';
 
-import type { ResponseEnvelope } from '../../shared/schema/envelopes.js';
 import { collectCallerContext } from './context.js';
 import { mapExitCode, toFailureEnvelope } from './errors.js';
-import { writeDiagnostic, writeResponse, type OutputFormat } from './output.js';
+import { writeDiagnostic, writeResponse, type OutputFormat, type RenderableResponse } from './output.js';
 import { registerSessionCommands } from './commands/session.js';
 import { registerDaemonCommands } from './commands/daemon.js';
 import { registerPageCommands } from './commands/page.js';
@@ -34,8 +33,8 @@ type GlobalOptions = {
   home?: string;
 };
 
-const normalizeEnvelope = (payload: unknown): ResponseEnvelope => {
-  const maybeEnvelope = payload as Partial<ResponseEnvelope>;
+const normalizeEnvelope = (payload: unknown): RenderableResponse => {
+  const maybeEnvelope = payload as Partial<RenderableResponse>;
 
   if (typeof maybeEnvelope === 'object' && maybeEnvelope && 'ok' in maybeEnvelope) {
     return {
@@ -43,7 +42,8 @@ const normalizeEnvelope = (payload: unknown): ResponseEnvelope => {
       ok: Boolean(maybeEnvelope.ok),
       data: maybeEnvelope.data,
       error: maybeEnvelope.error,
-      meta: maybeEnvelope.meta ?? { durationMs: 0 }
+      meta: maybeEnvelope.meta ?? { durationMs: 0 },
+      text: typeof maybeEnvelope.text === 'string' ? maybeEnvelope.text : undefined
     };
   }
 
@@ -61,7 +61,7 @@ export const createProgram = (): Command => {
   program
     .name('browser')
     .description('Chrome DevTools style browser control CLI')
-    .option('--output <format>', 'output format: json|text', 'json')
+    .option('--output <format>', 'output format: json|text', 'text')
     .option('--share-group <name>', 'explicit context sharing group')
     .option('--context-id <id>', 'manual context routing override')
     .option('--timeout <ms>', 'request timeout in ms')

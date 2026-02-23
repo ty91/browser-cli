@@ -17,6 +17,14 @@ const toUrl = (input: string): string => {
   return value;
 };
 
+const formatPageText = (headline: string, data: unknown): string => {
+  const payload = (data ?? {}) as { page?: { title?: string; url?: string } };
+  const page = payload.page;
+  const title = typeof page?.title === 'string' && page.title.trim().length > 0 ? page.title : '(untitled)';
+  const url = typeof page?.url === 'string' ? page.url : '-';
+  return [headline, `${title} ${url}`].join('\n');
+};
+
 export const registerNavigationCommands = (
   root: Command,
   getCtx: () => CommandContext,
@@ -39,7 +47,12 @@ export const registerNavigationCommands = (
       const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_OPEN, {
         url: toUrl(url)
       });
-      await onResponse(response.ok, response);
+      if (!response.ok) {
+        await onResponse(false, response);
+        return;
+      }
+
+      await onResponse(true, { ...response, text: formatPageText('tab opened', response.data) });
     });
 
   root
@@ -59,6 +72,11 @@ export const registerNavigationCommands = (
       const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_NAVIGATE, {
         url: toUrl(url)
       });
-      await onResponse(response.ok, response);
+      if (!response.ok) {
+        await onResponse(false, response);
+        return;
+      }
+
+      await onResponse(true, { ...response, text: formatPageText('navigated', response.data) });
     });
 };

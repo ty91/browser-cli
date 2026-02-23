@@ -165,6 +165,22 @@ export const findTabByIndex = (tabs: TabSummary[], index: number): TabSummary =>
   return tab;
 };
 
+const displayTitle = (title: string): string => (title.trim().length > 0 ? title : '(untitled)');
+
+const formatTabLine = (tab: TabSummary): string => {
+  const marker = tab.selected ? '*' : '';
+  return `[${tab.index}${marker}] ${displayTitle(tab.title)} ${tab.url}`;
+};
+
+const formatTabsText = (view: TabsView): string => {
+  const lines = [`tabs: ${view.tabs.length} (selected: ${view.selectedIndex ?? 'none'})`];
+  for (const tab of view.tabs) {
+    lines.push(formatTabLine(tab));
+  }
+
+  return lines.join('\n');
+};
+
 const relayFailure = async (
   onResponse: (ok: boolean, response: unknown) => Promise<void>,
   response: ResponseEnvelope
@@ -202,9 +218,11 @@ export const registerTabCommands = (
       }
 
       const listData = ensurePageListData(listResponse.data);
+      const view = toTabsView(listData.pages, listData.selectedPageId);
       await onResponse(true, {
         ...listResponse,
-        data: toTabsView(listData.pages, listData.selectedPageId)
+        data: view,
+        text: formatTabsText(view)
       });
     });
 
@@ -239,7 +257,11 @@ export const registerTabCommands = (
           tab: tabSummary,
           tabs: view.tabs,
           selectedIndex: view.selectedIndex
-        }
+        },
+        text:
+          tabSummary === null
+            ? 'tab opened'
+            : ['tab opened', `${displayTitle(tabSummary.title)} ${tabSummary.url}`].join('\n')
       });
     });
 
@@ -287,7 +309,11 @@ export const registerTabCommands = (
           tab: focusedTab,
           tabs: afterView.tabs,
           selectedIndex: afterView.selectedIndex
-        }
+        },
+        text:
+          focusedTab === null
+            ? `tab selected: ${tabIndex}`
+            : [`tab selected: ${focusedTab.index}`, `${displayTitle(focusedTab.title)} ${focusedTab.url}`].join('\n')
       });
     });
 
@@ -334,7 +360,10 @@ export const registerTabCommands = (
           },
           tabs: afterView.tabs,
           selectedIndex: afterView.selectedIndex
-        }
+        },
+        text: [`tab closed: ${targetTab.index}`, `tabs: ${afterView.tabs.length} (selected: ${afterView.selectedIndex ?? 'none'})`].join(
+          '\n'
+        )
       });
     });
 

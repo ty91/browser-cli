@@ -62,10 +62,37 @@ export const registerDaemonCommands = (
       });
     });
 
+  daemon
+    .command('restart')
+    .description('Restart daemon')
+    .action(async () => {
+      const ctx = getCtx();
+      const client = new DaemonClient(ctx.homeDir);
+      const wasRunning = await client.stop(toDaemonContext(ctx));
+      await client.ensureRunning(toDaemonContext(ctx));
+      const status = await client.send(IPC_OP.DAEMON_STATUS, {}, toDaemonContext(ctx));
+
+      if (!status.ok) {
+        await onResponse(false, status);
+        return;
+      }
+
+      const data = (status.data ?? {}) as { pid?: number; socketPath?: string };
+      const text = ['daemon restarted', `pid: ${typeof data.pid === 'number' ? data.pid : 'unknown'}`, `socket: ${data.socketPath ?? '-'}`];
+      if (!wasRunning) {
+        text.push('previously running: no');
+      }
+
+      await onResponse(true, {
+        ...status,
+        text: text.join('\n')
+      });
+    });
+
   daemon.action(async () => {
     throw new AppError('Missing daemon subcommand.', {
       code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt daemon --help']
+      suggestions: ['Run: browser daemon --help']
     });
   });
 };
