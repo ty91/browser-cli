@@ -166,7 +166,7 @@ describe.skipIf(!hasChrome)('phase 3 integration', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'phase3-e2e'
     };
 

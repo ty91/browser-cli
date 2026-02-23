@@ -66,7 +66,7 @@ describe.skipIf(!hasChrome)('navigation commands integration', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'nav-root'
     };
 

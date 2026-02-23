@@ -145,7 +145,7 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'loop-primitives'
     };
 

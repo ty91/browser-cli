@@ -3,6 +3,7 @@ import type { Command } from 'commander';
 import { AppError } from '../../../shared/errors/AppError.js';
 import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
+import { writeDiagnostic } from '../output.js';
 import { sendDaemonCommand, type CommandContext } from './common.js';
 
 const toPageId = (input?: string): number | undefined => {
@@ -81,6 +82,8 @@ export const registerCaptureCommands = (
         maxHeight?: string;
         keep?: string;
       }) => {
+        writeDiagnostic('[deprecated] Use "browser screenshot" instead of "browser capture screenshot".');
+
         const quality = opts.quality ? Number(opts.quality) : undefined;
         if (quality !== undefined && (!Number.isInteger(quality) || quality < 0 || quality > 100)) {
           throw new AppError('quality must be an integer in range 0-100.', {

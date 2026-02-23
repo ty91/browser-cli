@@ -89,7 +89,7 @@ export class DaemonClient {
       stdio: 'ignore',
       env: {
         ...process.env,
-        CDT_HOME: this.homeDir ?? process.env.CDT_HOME,
+        BROWSER_HOME: this.homeDir ?? process.env.BROWSER_HOME,
         CDT_DAEMON_FOREGROUND: '0',
         CDT_DAEMON_LOG: this.logPath
       }

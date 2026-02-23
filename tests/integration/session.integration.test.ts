@@ -61,7 +61,7 @@ describe.skipIf(!hasChrome)('session integration', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'ctx-a'
     };
 
@@ -101,13 +101,13 @@ describe.skipIf(!hasChrome)('session integration', () => {
 
     const envA = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'ctx-A'
     };
 
     const envB = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'ctx-B'
     };
 
@@ -143,7 +143,7 @@ describe.skipIf(!hasChrome)('session integration', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'phase2-e2e'
     };
 
@@ -264,7 +264,7 @@ describe.skipIf(!hasChrome)('session integration', () => {
 
     const env: NodeJS.ProcessEnv = {
       ...process.env,
-      CDT_HOME: tempHome
+      BROWSER_HOME: tempHome
     };
 
     delete env.CDT_CONTEXT_ID;

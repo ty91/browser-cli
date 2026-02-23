@@ -14,6 +14,7 @@ import { registerInputCommands } from './commands/input.js';
 import { registerDialogCommands } from './commands/dialog.js';
 import { registerRuntimeCommands } from './commands/runtime.js';
 import { registerCaptureCommands } from './commands/capture.js';
+import { registerScreenshotCommand } from './commands/screenshot.js';
 import { registerConsoleCommands } from './commands/console.js';
 import { registerNetworkCommands } from './commands/network.js';
 import { registerEmulationCommands } from './commands/emulation.js';
@@ -65,7 +66,7 @@ export const createProgram = (): Command => {
     .option('--share-group <name>', 'explicit context sharing group')
     .option('--context-id <id>', 'manual context routing override')
     .option('--timeout <ms>', 'request timeout in ms')
-    .option('--home <path>', 'override cdt home directory (default: ~/.cdt)')
+    .option('--home <path>', 'override browser home directory (default: ~/.browser)')
     .option('--describe', 'show schema/examples for command')
     .option('--debug', 'print diagnostics to stderr for errors');
 
@@ -110,6 +111,7 @@ export const createProgram = (): Command => {
   registerDialogCommands(program, getContext, onResponse);
   registerRuntimeCommands(program, getContext, onResponse);
   registerCaptureCommands(program, getContext, onResponse);
+  registerScreenshotCommand(program, getContext, onResponse);
   registerConsoleCommands(program, getContext, onResponse);
   registerNetworkCommands(program, getContext, onResponse);
   registerEmulationCommands(program, getContext, onResponse);
@@ -155,6 +157,7 @@ export const createProgram = (): Command => {
             'browser navigate https://example.com/dashboard',
             'browser tabs',
             'browser tab new',
+            'browser screenshot',
             'browser observe state',
             'browser runtime eval --function "() => document.title"',
             'browser trace start --file ./trace.json'

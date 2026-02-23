@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 
 import { describe, expect, it } from 'vitest';
 
@@ -55,7 +55,7 @@ describe.skipIf(!hasChrome)('default text output', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'text-output'
     };
 
@@ -108,7 +108,7 @@ describe('daemon restart command', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome
+      BROWSER_HOME: tempHome
     };
 
     try {
@@ -126,4 +126,61 @@ describe('daemon restart command', () => {
       await rm(tempHome, { recursive: true, force: true });
     }
   });
+});
+
+describe.skipIf(!hasChrome)('screenshot command', () => {
+  it('saves jpeg file under browser home and prints concise text output', async () => {
+    const cwd = process.cwd();
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), 'browser-screenshot-'));
+
+    const env = {
+      ...process.env,
+      BROWSER_HOME: tempHome,
+      CDT_CONTEXT_ID: 'screenshot-output'
+    };
+
+    const pageA = 'data:text/html,%3Chtml%3E%3Chead%3E%3Ctitle%3EShotA%3C/title%3E%3C/head%3E%3Cbody%3EA%3C/body%3E%3C/html%3E';
+
+    try {
+      const start = await runCli(['start', '--headless'], env, cwd);
+      expect(start.code).toBe(0);
+
+      const open = await runCli(['open', pageA], env, cwd);
+      expect(open.code).toBe(0);
+
+      const shot = await runCli(['screenshot'], env, cwd);
+      expect(shot.code).toBe(0);
+      const shotMatch = shot.stdout.match(
+        /^screenshot saved: (.+screenshot-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-z0-9]{6}\.jpg)$/
+      );
+      expect(shotMatch).not.toBeNull();
+      const shotPath = shotMatch?.[1];
+      expect(shotPath).toBeDefined();
+      expect(shotPath?.startsWith(path.join(tempHome, 'screenshots'))).toBe(true);
+      if (shotPath) {
+        await access(shotPath);
+      }
+
+      const shotTab2 = await runCli(['screenshot', '--tab', '2', '--full'], env, cwd);
+      expect(shotTab2.code).toBe(0);
+      const shotTab2Match = shotTab2.stdout.match(
+        /^screenshot saved: (.+screenshot-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[a-z0-9]{6}\.jpg)$/
+      );
+      expect(shotTab2Match).not.toBeNull();
+      const shotTab2Path = shotTab2Match?.[1];
+      expect(shotTab2Path).toBeDefined();
+      if (shotTab2Path) {
+        await access(shotTab2Path);
+      }
+
+      const deprecated = await runCli(['capture', 'screenshot'], env, cwd);
+      expect(deprecated.code).toBe(0);
+      expect(deprecated.stderr.toLowerCase()).toContain('deprecated');
+      expect(deprecated.stderr.toLowerCase()).toContain('browser screenshot');
+    } finally {
+      await runCli(['stop', '--output', 'json'], env, cwd);
+      await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  }, 45_000);
 });

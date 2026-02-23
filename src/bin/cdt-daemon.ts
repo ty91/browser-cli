@@ -15,7 +15,7 @@ const writeLog = async (message: string): Promise<void> => {
 
 const main = async (): Promise<void> => {
   const daemon = new BrokerDaemon({
-    homeDir: process.env.CDT_HOME
+    homeDir: process.env.BROWSER_HOME
   });
 
   await daemon.start();

@@ -2,11 +2,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const resolveCdtHome = (): string => {
-  const fromEnv = process.env.CDT_HOME;
+  const fromEnv = process.env.BROWSER_HOME;
   if (fromEnv && fromEnv.trim().length > 0) {
     return fromEnv;
   }
-  return path.join(os.homedir(), '.cdt');
+  return path.join(os.homedir(), '.browser');
 };
 
 export const resolveBrokerDir = (homeDir = resolveCdtHome()): string => path.join(homeDir, 'broker');

@@ -66,7 +66,7 @@ describe.skipIf(!hasChrome)('tab commands integration', () => {
 
     const env = {
       ...process.env,
-      CDT_HOME: tempHome,
+      BROWSER_HOME: tempHome,
       CDT_CONTEXT_ID: 'tab-commands'
     };
 
