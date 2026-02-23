@@ -1,9 +1,16 @@
 # browser-cli
 
-Agent/LLM 워크플로우를 위한 로컬 브라우저 제어 CLI.
-데몬 기반 세션, 탭 관리, 스냅샷 기반 element ref 시스템을 제공한다.
+Local browser control CLI for agent/LLM workflows.
+Daemon-backed sessions, tab management, and snapshot-based element ref system.
 
-## Install
+## Install (Global)
+
+```bash
+npm install -g @ty91/browser-cli
+browser --version
+```
+
+## Local Dev Install
 
 ```bash
 pnpm install
@@ -73,26 +80,26 @@ browser screenshot
 browser screenshot --tab 2 --full
 ```
 
-`snapshot`은 현재 탭의 텍스트 스냅샷을 출력한다. 1500줄에서 잘린다.
-`screenshot`은 JPEG를 `~/.browser/screenshots/`에 저장한다.
+`snapshot` prints a text snapshot of the current tab. Truncated after 1500 lines.
+`screenshot` saves JPEG files to `~/.browser/screenshots/`.
 
 ### Ref Actions
 
-`snapshot` 출력에 포함된 element ref(`e12`, `e497` 등)로 페이지와 상호작용한다.
+Interact with the page using element refs (`e12`, `e497`, etc.) from `snapshot` output.
 
 ```bash
 browser click e497
 browser doubleclick e497
 browser hover e497
-browser fill e12 "Hello"       # 기존 값을 지우고 입력
-browser type e12 "Hello"       # 기존 값 뒤에 이어서 입력
+browser fill e12 "Hello"       # clears existing value, sets new text
+browser type e12 "Hello"       # appends to existing value
 browser scrollintoview e497
 browser press Enter
 ```
 
 ## Output
 
-기본 출력은 텍스트. `--output json`으로 JSON을 받을 수 있다.
+Default output is text. Use `--output json` for JSON.
 
 ```bash
 browser daemon status --output json
@@ -102,12 +109,12 @@ browser version --output json
 
 ## Configuration
 
-| Flag | 설명 |
+| Flag | Description |
 |---|---|
-| `--home <path>` | 홈 디렉토리 변경 (기본: `~/.browser`, env: `BROWSER_HOME`) |
-| `--context-id <id>` | 라우팅 컨텍스트 지정 |
-| `--share-group <name>` | 셸 간 컨텍스트 공유 |
-| `--debug` | stderr 진단 출력 |
+| `--home <path>` | Override home directory (default: `~/.browser`, env: `BROWSER_HOME`) |
+| `--context-id <id>` | Set routing context |
+| `--share-group <name>` | Share context across shells |
+| `--debug` | Print diagnostics to stderr |
 
 ```bash
 browser --home ~/.browser-dev daemon start
@@ -117,11 +124,27 @@ browser --share-group qa tabs
 
 ## Troubleshooting
 
-명령이 실패하면 데몬 상태부터 확인한다.
+If commands fail, check daemon health first.
 
 ```bash
 browser daemon status
 browser daemon restart
+```
+
+## Release (Maintainer)
+
+```bash
+# 1) npm auth
+npm login
+
+# 2) bump version
+pnpm version patch   # or minor / major
+
+# 3) publish
+pnpm publish --access public
+
+# 4) verify
+npm view @ty91/browser-cli version
 ```
 
 ## Version
