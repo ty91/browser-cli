@@ -10,6 +10,7 @@ import {
   type CDPSession,
   type Dialog,
   type Geolocation,
+  type Locator,
   type Page,
   type Request as PWRequest
 } from 'playwright';
@@ -793,6 +794,103 @@ export class BrowserSlotManager {
     };
   }
 
+  public async clickByRef(
+    contextKeyHash: string,
+    input: { pageId?: number; ref: string }
+  ): Promise<{ pageId: number; ref: string; action: 'click' }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const ref = input.ref.trim();
+    const locator = await this.resolveRefLocator(page, pageId, ref);
+
+    await page.bringToFront();
+    await locator.click();
+
+    return {
+      pageId,
+      ref,
+      action: 'click'
+    };
+  }
+
+  public async doubleClickByRef(
+    contextKeyHash: string,
+    input: { pageId?: number; ref: string }
+  ): Promise<{ pageId: number; ref: string; action: 'doubleclick' }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const ref = input.ref.trim();
+    const locator = await this.resolveRefLocator(page, pageId, ref);
+
+    await page.bringToFront();
+    await locator.dblclick();
+
+    return {
+      pageId,
+      ref,
+      action: 'doubleclick'
+    };
+  }
+
+  public async hoverByRef(
+    contextKeyHash: string,
+    input: { pageId?: number; ref: string }
+  ): Promise<{ pageId: number; ref: string; action: 'hover' }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const ref = input.ref.trim();
+    const locator = await this.resolveRefLocator(page, pageId, ref);
+
+    await page.bringToFront();
+    await locator.hover();
+
+    return {
+      pageId,
+      ref,
+      action: 'hover'
+    };
+  }
+
+  public async typeByRef(
+    contextKeyHash: string,
+    input: { pageId?: number; ref: string; text: string }
+  ): Promise<{ pageId: number; ref: string; action: 'type'; textLength: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const ref = input.ref.trim();
+    const locator = await this.resolveRefLocator(page, pageId, ref);
+
+    await page.bringToFront();
+    await locator.click();
+    await page.keyboard.type(input.text);
+
+    return {
+      pageId,
+      ref,
+      action: 'type',
+      textLength: input.text.length
+    };
+  }
+
+  public async scrollIntoViewByRef(
+    contextKeyHash: string,
+    input: { pageId?: number; ref: string }
+  ): Promise<{ pageId: number; ref: string; action: 'scrollIntoView' }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const ref = input.ref.trim();
+    const locator = await this.resolveRefLocator(page, pageId, ref);
+
+    await page.bringToFront();
+    await locator.scrollIntoViewIfNeeded();
+
+    return {
+      pageId,
+      ref,
+      action: 'scrollIntoView'
+    };
+  }
+
   public async dragElement(
     contextKeyHash: string,
     input: { pageId?: number; fromSelector: string; toSelector: string; steps?: number }
@@ -1040,6 +1138,7 @@ export class BrowserSlotManager {
     });
 
     await page.mouse.wheel(dx, input.dy);
+    await page.waitForTimeout(50);
 
     const after = await page.evaluate(() => {
       const win = (globalThis as { window?: { scrollX?: number; scrollY?: number } }).window;
@@ -1696,6 +1795,33 @@ export class BrowserSlotManager {
     const created = await slot.context.newCDPSession(page);
     slot.pageCdpSessions.set(pageId, created);
     return created;
+  }
+
+  private async resolveRefLocator(page: Page, pageId: number, ref: string): Promise<Locator> {
+    if (!ref || ref.trim().length === 0) {
+      throw new AppError('ref must not be empty.', {
+        code: ERROR_CODE.VALIDATION_ERROR,
+        suggestions: ['Use: browser click e12']
+      });
+    }
+
+    const locator = page.locator(`aria-ref=${ref}`);
+
+    try {
+      const internal = locator as Locator & { _resolveSelector?: () => Promise<unknown> };
+      if (typeof internal._resolveSelector === 'function') {
+        await internal._resolveSelector();
+      } else {
+        await locator.waitFor({ state: 'attached', timeout: 1_500 });
+      }
+      return locator;
+    } catch {
+      throw new AppError(`Ref ${ref} not found in the current page snapshot.`, {
+        code: ERROR_CODE.ELEMENT_NOT_FOUND,
+        details: { ref, pageId },
+        suggestions: ['Run: browser snapshot', 'Then retry with a fresh ref from the latest snapshot.']
+      });
+    }
   }
 
   private async assertPointInteractable(page: Page, pageId: number, x: number, y: number): Promise<void> {

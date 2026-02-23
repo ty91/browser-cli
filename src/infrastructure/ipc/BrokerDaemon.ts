@@ -183,6 +183,17 @@ const inputScrollSchema = z.object({
   dy: z.number()
 });
 
+const refActionSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  ref: z.string().min(1)
+});
+
+const refTypeSchema = z.object({
+  pageId: pageIdSchema.optional(),
+  ref: z.string().min(1),
+  text: z.string()
+});
+
 const dialogHandleSchema = z.object({
   pageId: pageIdSchema.optional(),
   action: z.enum(['accept', 'dismiss']),
@@ -983,6 +994,112 @@ export class BrokerDaemon {
               pageId: payload.pageId,
               dx: payload.dx,
               dy: payload.dy
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.REF_CLICK) {
+        const payload = refActionSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.clickByRef(contextKeyHash, {
+              pageId: payload.pageId,
+              ref: payload.ref
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.REF_DOUBLECLICK) {
+        const payload = refActionSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.doubleClickByRef(contextKeyHash, {
+              pageId: payload.pageId,
+              ref: payload.ref
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.REF_HOVER) {
+        const payload = refActionSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.hoverByRef(contextKeyHash, {
+              pageId: payload.pageId,
+              ref: payload.ref
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.REF_TYPE) {
+        const payload = refTypeSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.typeByRef(contextKeyHash, {
+              pageId: payload.pageId,
+              ref: payload.ref,
+              text: payload.text
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.REF_SCROLL_INTO_VIEW) {
+        const payload = refActionSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.scrollIntoViewByRef(contextKeyHash, {
+              pageId: payload.pageId,
+              ref: payload.ref
             });
           },
           { queue: true }

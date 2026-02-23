@@ -16,6 +16,10 @@ type CliResult = {
 type CliEnvelope = {
   ok: boolean;
   data?: Record<string, unknown>;
+  error?: {
+    code?: string;
+    suggestions?: string[];
+  };
 };
 
 const runCli = async (args: string[], env: NodeJS.ProcessEnv, cwd: string): Promise<CliResult> => {
@@ -54,6 +58,20 @@ const runCli = async (args: string[], env: NodeJS.ProcessEnv, cwd: string): Prom
 const parseEnvelope = (stdout: string): CliEnvelope => JSON.parse(stdout) as CliEnvelope;
 
 const hasChrome = BrowserSlotManager.resolveChromePath() !== null;
+
+const findRefByText = (snapshotText: string, marker: string): string => {
+  for (const line of snapshotText.split('\n')) {
+    if (!line.includes(marker)) {
+      continue;
+    }
+    const match = line.match(/\[ref=(e\d+)\]/);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  throw new Error(`Ref not found for marker: ${marker}`);
+};
 
 describe.skipIf(!hasChrome)('default text output', () => {
   it('prints concise human-readable text for recent commands', async () => {
@@ -301,4 +319,98 @@ describe.skipIf(!hasChrome)('snapshot command', () => {
       await rm(tempHome, { recursive: true, force: true });
     }
   }, 45_000);
+});
+
+describe.skipIf(!hasChrome)('ref action commands', () => {
+  it('runs click/doubleclick/hover/type/scrollintoview/press on selected tab', async () => {
+    const cwd = process.cwd();
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), 'browser-ref-actions-'));
+
+    const env = {
+      ...process.env,
+      BROWSER_HOME: tempHome,
+      CDT_CONTEXT_ID: 'ref-actions-output'
+    };
+
+    const pageHtml = `<!doctype html><html><head><title>RefActions</title><style>body{margin:0;padding:0}#spacer{height:2400px}#deep{margin-top:24px}</style></head><body><button id="click">Click Target</button><button id="double">Double Target</button><div id="hover" role="button" tabindex="0">Hover Target</div><input id="type" aria-label="Type Target" /><div id="spacer"></div><button id="deep">Deep Target</button><script>window.__events={clickCount:0,doubleCount:0,hovered:false,inputValue:'',lastKey:'',deepInView:false};document.getElementById('click').addEventListener('click',()=>{window.__events.clickCount+=1;});document.getElementById('double').addEventListener('dblclick',()=>{window.__events.doubleCount+=1;});document.getElementById('hover').addEventListener('mouseenter',()=>{window.__events.hovered=true;});document.getElementById('type').addEventListener('input',(event)=>{window.__events.inputValue=event.target.value;});document.addEventListener('keydown',(event)=>{window.__events.lastKey=event.key;});window.__captureDeepInView=()=>{const rect=document.getElementById('deep').getBoundingClientRect();window.__events.deepInView=rect.top>=0&&rect.top<=window.innerHeight;};</script></body></html>`;
+    const pageUrl = `data:text/html,${encodeURIComponent(pageHtml)}`;
+
+    try {
+      const start = await runCli(['start', '--headless'], env, cwd);
+      expect(start.code).toBe(0);
+
+      const open = await runCli(['open', pageUrl], env, cwd);
+      expect(open.code).toBe(0);
+
+      const snapshot = await runCli(['snapshot'], env, cwd);
+      expect(snapshot.code).toBe(0);
+      const clickRef = findRefByText(snapshot.stdout, 'Click Target');
+      const doubleRef = findRefByText(snapshot.stdout, 'Double Target');
+      const hoverRef = findRefByText(snapshot.stdout, 'Hover Target');
+      const typeRef = findRefByText(snapshot.stdout, 'Type Target');
+      const deepRef = findRefByText(snapshot.stdout, 'Deep Target');
+
+      const click = await runCli(['click', clickRef], env, cwd);
+      expect(click.code).toBe(0);
+      expect(click.stdout).toBe(`clicked: ${clickRef}`);
+
+      const doubleClick = await runCli(['doubleclick', doubleRef], env, cwd);
+      expect(doubleClick.code).toBe(0);
+      expect(doubleClick.stdout).toBe(`doubleclicked: ${doubleRef}`);
+
+      const hover = await runCli(['hover', hoverRef], env, cwd);
+      expect(hover.code).toBe(0);
+      expect(hover.stdout).toBe(`hovered: ${hoverRef}`);
+
+      const typedText = 'Hello Browser';
+      const type = await runCli(['type', typeRef, typedText], env, cwd);
+      expect(type.code).toBe(0);
+      expect(type.stdout).toBe(`typed: ${typeRef} (${typedText.length} chars)`);
+
+      const press = await runCli(['press', 'Enter'], env, cwd);
+      expect(press.code).toBe(0);
+      expect(press.stdout).toBe('pressed: Enter');
+
+      const scrollIntoView = await runCli(['scrollintoview', deepRef], env, cwd);
+      expect(scrollIntoView.code).toBe(0);
+      expect(scrollIntoView.stdout).toBe(`scrolled into view: ${deepRef}`);
+
+      const captureInView = await runCli(
+        ['runtime', 'eval', '--function', '() => { window.__captureDeepInView(); return true; }', '--output', 'json'],
+        env,
+        cwd
+      );
+      expect(captureInView.code).toBe(0);
+
+      const runtime = await runCli(['runtime', 'eval', '--function', '() => window.__events', '--output', 'json'], env, cwd);
+      expect(runtime.code).toBe(0);
+      const runtimeBody = parseEnvelope(runtime.stdout);
+      expect(runtimeBody.ok).toBe(true);
+      const value = (runtimeBody.data ?? {}).value as {
+        clickCount?: number;
+        doubleCount?: number;
+        hovered?: boolean;
+        inputValue?: string;
+        lastKey?: string;
+        deepInView?: boolean;
+      };
+      expect(value.clickCount).toBe(1);
+      expect(value.doubleCount).toBe(1);
+      expect(value.hovered).toBe(true);
+      expect(value.inputValue).toBe(typedText);
+      expect(value.lastKey).toBe('Enter');
+      expect(value.deepInView).toBe(true);
+
+      const invalidRef = await runCli(['click', 'e999999', '--output', 'json'], env, cwd);
+      expect(invalidRef.code).toBe(3);
+      const invalidEnvelope = parseEnvelope(invalidRef.stdout);
+      expect(invalidEnvelope.ok).toBe(false);
+      expect(invalidEnvelope.error?.code).toBe('ELEMENT_NOT_FOUND');
+      expect(invalidEnvelope.error?.suggestions ?? []).toContain('Run: browser snapshot');
+    } finally {
+      await runCli(['stop', '--output', 'json'], env, cwd);
+      await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

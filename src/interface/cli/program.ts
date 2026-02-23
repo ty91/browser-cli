@@ -16,6 +16,7 @@ import { registerRuntimeCommands } from './commands/runtime.js';
 import { registerCaptureCommands } from './commands/capture.js';
 import { registerSnapshotCommand } from './commands/snapshot.js';
 import { registerScreenshotCommand } from './commands/screenshot.js';
+import { registerRefActionCommands } from './commands/ref-actions.js';
 import { registerConsoleCommands } from './commands/console.js';
 import { registerNetworkCommands } from './commands/network.js';
 import { registerEmulationCommands } from './commands/emulation.js';
@@ -114,6 +115,7 @@ export const createProgram = (): Command => {
   registerCaptureCommands(program, getContext, onResponse);
   registerSnapshotCommand(program, getContext, onResponse);
   registerScreenshotCommand(program, getContext, onResponse);
+  registerRefActionCommands(program, getContext, onResponse);
   registerConsoleCommands(program, getContext, onResponse);
   registerNetworkCommands(program, getContext, onResponse);
   registerEmulationCommands(program, getContext, onResponse);
@@ -161,6 +163,12 @@ export const createProgram = (): Command => {
             'browser tab new',
             'browser snapshot',
             'browser screenshot',
+            'browser click e497',
+            'browser doubleclick e497',
+            'browser hover e497',
+            'browser type e12 "Hello"',
+            'browser scrollintoview e497',
+            'browser press Enter',
             'browser observe state',
             'browser runtime eval --function "() => document.title"',
             'browser trace start --file ./trace.json'
