@@ -1092,6 +1092,28 @@ export class BrokerDaemon {
         };
       }
 
+      if (request.op === IPC_OP.REF_FILL) {
+        const payload = refTypeSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => {
+            return this.slotManager.fillByRef(contextKeyHash, {
+              pageId: payload.pageId,
+              ref: payload.ref,
+              text: payload.text
+            });
+          },
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
       if (request.op === IPC_OP.REF_SCROLL_INTO_VIEW) {
         const payload = refActionSchema.parse(request.payload);
         const data = await this.withContextAccess(

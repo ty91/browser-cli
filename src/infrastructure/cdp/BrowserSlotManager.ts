@@ -872,6 +872,26 @@ export class BrowserSlotManager {
     };
   }
 
+  public async fillByRef(
+    contextKeyHash: string,
+    input: { pageId?: number; ref: string; text: string }
+  ): Promise<{ pageId: number; ref: string; action: 'fill'; textLength: number }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+    const ref = input.ref.trim();
+    const locator = await this.resolveRefLocator(page, pageId, ref);
+
+    await page.bringToFront();
+    await locator.fill(input.text);
+
+    return {
+      pageId,
+      ref,
+      action: 'fill',
+      textLength: input.text.length
+    };
+  }
+
   public async scrollIntoViewByRef(
     contextKeyHash: string,
     input: { pageId?: number; ref: string }

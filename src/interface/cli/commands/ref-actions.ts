@@ -112,6 +112,33 @@ export const registerRefActionCommands = (
     });
 
   root
+    .command('fill <ref> <text>')
+    .description('Clear existing value and fill text by ref')
+    .option('--describe', 'Show command schema and examples')
+    .action(async (ref: string, text: string, opts: { describe?: boolean }) => {
+      if (opts.describe) {
+        await onResponse(true, {
+          command: 'fill',
+          payload: { ref: 'string (required)', text: 'string (required)' },
+          examples: ['browser fill e12 "Hello"']
+        });
+        return;
+      }
+
+      const normalizedRef = toRef(ref);
+      const value = toTypeText(text);
+      const response = await sendDaemonCommand(getCtx(), IPC_OP.REF_FILL, {
+        ref: normalizedRef,
+        text: value
+      });
+      if (!response.ok) {
+        await onResponse(false, response);
+        return;
+      }
+      await onResponse(true, { ...response, text: `filled: ${normalizedRef} (${value.length} chars)` });
+    });
+
+  root
     .command('type <ref> <text>')
     .description('Focus element by ref and type text')
     .option('--describe', 'Show command schema and examples')

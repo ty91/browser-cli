@@ -38,6 +38,7 @@ export const IPC_OP = {
   REF_CLICK: 'ref.click',
   REF_DOUBLECLICK: 'ref.doubleclick',
   REF_HOVER: 'ref.hover',
+  REF_FILL: 'ref.fill',
   REF_TYPE: 'ref.type',
   REF_SCROLL_INTO_VIEW: 'ref.scrollIntoView',
   DIALOG_HANDLE: 'dialog.handle',

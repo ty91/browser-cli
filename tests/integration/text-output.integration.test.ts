@@ -314,7 +314,7 @@ describe.skipIf(!hasChrome)('snapshot command', () => {
 });
 
 describe.skipIf(!hasChrome)('ref action commands', () => {
-  it('runs click/doubleclick/hover/type/scrollintoview/press on selected tab', async () => {
+  it('runs click/doubleclick/hover/fill/type/scrollintoview/press on selected tab', async () => {
     const cwd = process.cwd();
     const tempHome = await mkdtemp(path.join(os.tmpdir(), 'browser-ref-actions-'));
 
@@ -359,6 +359,11 @@ describe.skipIf(!hasChrome)('ref action commands', () => {
       expect(type.code).toBe(0);
       expect(type.stdout).toBe(`typed: ${typeRef} (${typedText.length} chars)`);
 
+      const filledText = 'Overwritten Value';
+      const fill = await runCli(['fill', typeRef, filledText], env, cwd);
+      expect(fill.code).toBe(0);
+      expect(fill.stdout).toBe(`filled: ${typeRef} (${filledText.length} chars)`);
+
       const press = await runCli(['press', 'Enter'], env, cwd);
       expect(press.code).toBe(0);
       expect(press.stdout).toBe('pressed: Enter');
@@ -389,7 +394,7 @@ describe.skipIf(!hasChrome)('ref action commands', () => {
       expect(value.clickCount).toBe(1);
       expect(value.doubleCount).toBe(1);
       expect(value.hovered).toBe(true);
-      expect(value.inputValue).toBe(typedText);
+      expect(value.inputValue).toBe(filledText);
       expect(value.lastKey).toBe('Enter');
       expect(value.deepInView).toBe(true);
 

@@ -9,7 +9,7 @@ It focuses on fast terminal ergonomics, stable daemon-backed sessions, and LLM-f
 - Tab-first commands (`tabs`, `tab new/select/close`, `open`, `navigate`).
 - LLM-friendly `snapshot` output with element refs for follow-up actions.
 - Simple human-readable text output by default, JSON when needed.
-- Handy ref actions: `click`, `doubleclick`, `hover`, `type`, `scrollintoview`, `press`.
+- Handy ref actions: `click`, `doubleclick`, `hover`, `fill`, `type`, `scrollintoview`, `press`.
 
 ## Quickstart (Local Dev)
 
@@ -41,6 +41,7 @@ browser snapshot
 
 # 5) Act on refs
 browser click e497
+browser fill e12 "Hello"
 browser type e12 "Hello"
 browser press Enter
 
@@ -101,10 +102,14 @@ browser screenshot --tab 2 --full
 browser click e497
 browser doubleclick e497
 browser hover e497
+browser fill e12 "Hello"
 browser type e12 "Hello"
 browser scrollintoview e497
 browser press Enter
 ```
+
+- `browser fill` clears existing value and sets new text.
+- `browser type` keeps current value and types additional text.
 
 ## Output Modes
 
