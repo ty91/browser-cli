@@ -12,8 +12,8 @@ describe('snapshot command helpers', () => {
         selected: true
       },
       snapshot: {
-        format: 'aria-ref-like',
-        tree: '- [ref=r1] RootWebArea "Example Domain"',
+        format: 'playwright-aria',
+        raw: '- generic [ref=s1e1]:\n  - heading "Example Domain" [level=1]',
         nodeCount: 1,
         capturedAt: '2026-02-23T11:00:00.000Z'
       }
@@ -22,7 +22,7 @@ describe('snapshot command helpers', () => {
     expect(text).toContain('snapshot (do-not-commit)');
     expect(text).toContain('url: https://example.com');
     expect(text).toContain('title: Example Domain');
-    expect(text).toContain('- [ref=r1] RootWebArea "Example Domain"');
+    expect(text).toContain('heading "Example Domain"');
   });
 
   it('does not truncate when text has 1500 lines or fewer', () => {

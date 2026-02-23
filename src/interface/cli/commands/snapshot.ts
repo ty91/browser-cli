@@ -16,8 +16,8 @@ type SnapshotPage = {
 };
 
 type SnapshotPayload = {
-  format: 'aria-ref-like';
-  tree: string;
+  format: 'playwright-aria';
+  raw: string;
   nodeCount: number;
   capturedAt: string;
 };
@@ -53,8 +53,8 @@ const parseSnapshotAriaData = (input: unknown): SnapshotAriaData => {
     typeof page.url !== 'string' ||
     typeof page.title !== 'string' ||
     typeof page.selected !== 'boolean' ||
-    snapshot.format !== 'aria-ref-like' ||
-    typeof snapshot.tree !== 'string' ||
+    snapshot.format !== 'playwright-aria' ||
+    typeof snapshot.raw !== 'string' ||
     !isInteger(snapshot.nodeCount) ||
     typeof snapshot.capturedAt !== 'string'
   ) {
@@ -73,7 +73,7 @@ const parseSnapshotAriaData = (input: unknown): SnapshotAriaData => {
     },
     snapshot: {
       format: snapshot.format,
-      tree: snapshot.tree,
+      raw: snapshot.raw,
       nodeCount: snapshot.nodeCount,
       capturedAt: snapshot.capturedAt
     }
@@ -81,7 +81,7 @@ const parseSnapshotAriaData = (input: unknown): SnapshotAriaData => {
 };
 
 export const buildSnapshotText = (data: SnapshotAriaData): string =>
-  ['snapshot (do-not-commit)', `url: ${data.page.url}`, `title: ${data.page.title}`, '', data.snapshot.tree].join('\n');
+  ['snapshot (do-not-commit)', `url: ${data.page.url}`, `title: ${data.page.title}`, '', data.snapshot.raw].join('\n');
 
 export const applySnapshotLineLimit = (text: string, maxLines = SNAPSHOT_MAX_LINES): SnapshotTextResult => {
   if (!Number.isInteger(maxLines) || maxLines <= 0) {

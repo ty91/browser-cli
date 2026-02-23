@@ -4,24 +4,36 @@ import path from 'node:path';
 
 import { Launcher, launch, type LaunchedChrome } from 'chrome-launcher';
 import {
-  PredefinedNetworkConditions,
-  connect,
+  chromium,
   type Browser,
-  type ConsoleMessageType,
+  type BrowserContext,
+  type CDPSession,
   type Dialog,
-  type GeolocationOptions,
-  type HTTPRequest,
-  type KeyInput,
-  type MouseButton,
-  type NetworkConditions,
+  type Geolocation,
   type Page,
-  type Viewport
-} from 'puppeteer-core';
+  type Request as PWRequest
+} from 'playwright';
 
 import { AppError } from '../../shared/errors/AppError.js';
 import { ERROR_CODE } from '../../shared/errors/ErrorCode.js';
-import { renderAriaSnapshotTree } from './ariaSnapshot.js';
 import { resolveContextDir } from '../store/paths.js';
+
+type MouseButton = 'left' | 'right' | 'middle';
+type ConsoleMessageType = string;
+type Viewport = {
+  width: number;
+  height: number;
+  deviceScaleFactor?: number;
+  isMobile?: boolean;
+  hasTouch?: boolean;
+  isLandscape?: boolean;
+};
+type GeolocationOptions = Geolocation;
+type NetworkConditions = {
+  download: number;
+  upload: number;
+  latency: number;
+};
 
 type ConsoleEntry = {
   id: number;
@@ -65,6 +77,11 @@ type TraceState = {
   pageId: number;
   filePath: string;
   startedAt: string;
+  session: CDPSession;
+  events: Array<Record<string, unknown>>;
+  onDataCollected: (payload: { value?: Array<Record<string, unknown>> }) => void;
+  onTracingComplete: () => void;
+  completion: Promise<void>;
 };
 
 type UrlPatternMatcher = {
@@ -77,7 +94,9 @@ type BrowserSlot = {
   contextKeyHash: string;
   chrome: LaunchedChrome;
   browser: Browser;
+  context: BrowserContext;
   pages: Map<number, Page>;
+  pageCdpSessions: Map<number, CDPSession>;
   selectedPageId: number | null;
   nextPageId: number;
   headless: boolean;
@@ -85,7 +104,7 @@ type BrowserSlot = {
   consoleEntries: ConsoleEntry[];
   nextConsoleId: number;
   networkEntries: NetworkEntry[];
-  requestToNetworkId: WeakMap<HTTPRequest, number>;
+  requestToNetworkId: WeakMap<PWRequest, number>;
   nextNetworkId: number;
   pendingDialogs: Map<number, Dialog>;
   emulation: EmulationState;
@@ -110,6 +129,28 @@ export type SlotRuntimeState = {
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const SCREENSHOT_KEEP_DEFAULT = 300;
+const NETWORK_PROFILE_TABLE: Record<string, NetworkConditions> = {
+  'Slow 3G': {
+    download: 50_000,
+    upload: 50_000,
+    latency: 2_000
+  },
+  'Fast 3G': {
+    download: 180_000,
+    upload: 84_375,
+    latency: 562.5
+  },
+  'Slow 4G': {
+    download: 180_000,
+    upload: 84_375,
+    latency: 562.5
+  },
+  'Fast 4G': {
+    download: 1_012_500,
+    upload: 168_750,
+    latency: 165
+  }
+};
 
 const selectorSuggestions = (selector: string): string[] => [
   `Run: cdt capture snapshot --output json and verify selector ${selector}`,
@@ -202,7 +243,7 @@ export class BrowserSlotManager {
     }
   ): Promise<{ reused: boolean; state: SlotRuntimeState }> {
     const existing = this.slots.get(contextKeyHash);
-    if (existing && existing.browser.connected) {
+    if (existing && existing.browser.isConnected()) {
       return {
         reused: true,
         state: this.getSlotState(existing)
@@ -253,7 +294,7 @@ export class BrowserSlotManager {
     input: { url?: string; timeoutMs?: number }
   ): Promise<{ page: PageSummary; pages: PageSummary[] }> {
     const slot = this.ensureSlot(contextKeyHash);
-    const page = await slot.browser.newPage();
+    const page = await slot.context.newPage();
     const pageId = this.registerPage(slot, page);
 
     if (input.url) {
@@ -335,7 +376,7 @@ export class BrowserSlotManager {
     const slot = this.ensureSlot(contextKeyHash);
     const { pageId, page } = this.resolvePage(slot, input.pageId);
 
-    await page.setViewport({
+    await page.setViewportSize({
       width: input.width,
       height: input.height
     });
@@ -358,13 +399,13 @@ export class BrowserSlotManager {
 
     try {
       await page.waitForFunction(
-        (needle) => {
+        (needle: string) => {
           const documentRef = (globalThis as { document?: { body?: { innerText?: string } } }).document;
           const bodyText = documentRef?.body?.innerText ?? '';
           return bodyText.includes(needle);
         },
-        { timeout: toTimeout(input.timeoutMs) },
-        input.text
+        input.text,
+        { timeout: toTimeout(input.timeoutMs) }
       );
     } catch (error) {
       throw new AppError(`Timed out waiting for text: ${input.text}`, {
@@ -824,7 +865,7 @@ export class BrowserSlotManager {
       });
     }
 
-    await elementHandle.uploadFile(input.filePath);
+    await elementHandle.setInputFiles(input.filePath);
 
     return {
       pageId,
@@ -840,7 +881,7 @@ export class BrowserSlotManager {
     const slot = this.ensureSlot(contextKeyHash);
     const { pageId, page } = this.resolvePage(slot, input.pageId);
 
-    await page.keyboard.press(input.key as KeyInput);
+    await page.keyboard.press(input.key);
 
     return {
       pageId,
@@ -998,7 +1039,7 @@ export class BrowserSlotManager {
       return { x: win?.scrollX ?? 0, y: win?.scrollY ?? 0 };
     });
 
-    await page.mouse.wheel({ deltaX: dx, deltaY: input.dy });
+    await page.mouse.wheel(dx, input.dy);
 
     const after = await page.evaluate(() => {
       const win = (globalThis as { window?: { scrollX?: number; scrollY?: number } }).window;
@@ -1089,8 +1130,8 @@ export class BrowserSlotManager {
   public async snapshotAria(contextKeyHash: string, input: { pageId?: number }): Promise<{
     page: PageSummary;
     snapshot: {
-      format: 'aria-ref-like';
-      tree: string;
+      format: 'playwright-aria';
+      raw: string;
       nodeCount: number;
       capturedAt: string;
     };
@@ -1098,17 +1139,19 @@ export class BrowserSlotManager {
     const slot = this.ensureSlot(contextKeyHash);
     const { pageId, page } = this.resolvePage(slot, input.pageId);
 
-    const root = await page.accessibility.snapshot({
-      interestingOnly: false
-    });
-    const rendered = renderAriaSnapshotTree(root);
+    const raw = await page.locator('html').ariaSnapshot();
+    const nodeCount = raw
+      .split('\n')
+      .map((line) => line.trimStart())
+      .filter((line) => line.startsWith('- '))
+      .length;
 
     return {
       page: await this.toPageSummary(slot, pageId, page),
       snapshot: {
-        format: 'aria-ref-like',
-        tree: rendered.text,
-        nodeCount: rendered.nodeCount,
+        format: 'playwright-aria',
+        raw,
+        nodeCount,
         capturedAt: new Date().toISOString()
       }
     };
@@ -1149,12 +1192,17 @@ export class BrowserSlotManager {
     });
     const capturedAt = new Date().toISOString();
 
-    const raw = await page.screenshot({
-      fullPage: input.fullPage,
-      type: format,
-      quality: format === 'png' ? undefined : input.quality
-    });
-    const rawBuffer = typeof raw === 'string' ? Buffer.from(raw, 'base64') : Buffer.from(raw);
+    const rawBuffer =
+      format === 'webp'
+        ? await this.captureWebpViaCdp(slot, pageId, page, {
+            fullPage: input.fullPage,
+            quality: input.quality
+          })
+        : await page.screenshot({
+            fullPage: input.fullPage,
+            type: format,
+            quality: format === 'png' ? undefined : input.quality
+          });
 
     const resized = await this.resizeScreenshotIfNeeded({
       format,
@@ -1414,13 +1462,39 @@ export class BrowserSlotManager {
       path.join(resolveContextDir(contextKeyHash, this.homeDir), 'trace', `trace-${Date.now()}.json`);
 
     await mkdir(path.dirname(filePath), { recursive: true });
-    await page.tracing.start({ path: filePath });
+    const session = await this.getOrCreateCdpSession(slot, pageId, page);
+    const events: Array<Record<string, unknown>> = [];
+    let resolveCompletion: (() => void) | null = null;
+    const completion = new Promise<void>((resolve) => {
+      resolveCompletion = resolve;
+    });
+
+    const onDataCollected = (payload: { value?: Array<Record<string, unknown>> }): void => {
+      if (Array.isArray(payload.value)) {
+        events.push(...payload.value);
+      }
+    };
+    const onTracingComplete = (): void => {
+      resolveCompletion?.();
+    };
+
+    session.on('Tracing.dataCollected', onDataCollected);
+    session.on('Tracing.tracingComplete', onTracingComplete);
+    await session.send('Tracing.start', {
+      transferMode: 'ReportEvents',
+      categories: 'devtools.timeline,v8.execute'
+    });
 
     const startedAt = new Date().toISOString();
     slot.trace = {
       pageId,
       filePath,
-      startedAt
+      startedAt,
+      session,
+      events,
+      onDataCollected,
+      onTracingComplete,
+      completion
     };
 
     return {
@@ -1453,8 +1527,34 @@ export class BrowserSlotManager {
       });
     }
 
-    const output = await page.tracing.stop();
-    const traceBuffer = output ? Buffer.from(output) : await readFile(trace.filePath);
+    await trace.session.send('Tracing.end');
+    await Promise.race([trace.completion, sleep(5_000)]);
+    trace.session.off('Tracing.dataCollected', trace.onDataCollected);
+    trace.session.off('Tracing.tracingComplete', trace.onTracingComplete);
+
+    if (trace.events.length === 0) {
+      trace.events.push({
+        name: 'browser-cli-trace',
+        cat: 'browser-cli',
+        ph: 'I',
+        ts: Date.now() * 1_000,
+        pid: 1,
+        tid: 1
+      });
+    }
+
+    const traceBuffer = Buffer.from(
+      JSON.stringify(
+        {
+          traceEvents: trace.events
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+    await mkdir(path.dirname(trace.filePath), { recursive: true });
+    await writeFile(trace.filePath, traceBuffer);
 
     const finalPath = input.filePath ?? trace.filePath;
     if (input.filePath && input.filePath !== trace.filePath) {
@@ -1552,7 +1652,7 @@ export class BrowserSlotManager {
 
   private ensureSlot(contextKeyHash: string): BrowserSlot {
     const slot = this.slots.get(contextKeyHash);
-    if (!slot || !slot.browser.connected) {
+    if (!slot || !slot.browser.isConnected()) {
       throw new AppError('Session is not running for this context.', {
         code: ERROR_CODE.SESSION_NOT_FOUND,
         details: { contextKeyHash },
@@ -1563,9 +1663,30 @@ export class BrowserSlotManager {
     return slot;
   }
 
+  private findPageId(slot: BrowserSlot, targetPage: Page): number | null {
+    for (const [id, page] of slot.pages.entries()) {
+      if (page === targetPage) {
+        return id;
+      }
+    }
+
+    return null;
+  }
+
+  private async getOrCreateCdpSession(slot: BrowserSlot, pageId: number, page: Page): Promise<CDPSession> {
+    const existing = slot.pageCdpSessions.get(pageId);
+    if (existing) {
+      return existing;
+    }
+
+    const created = await slot.context.newCDPSession(page);
+    slot.pageCdpSessions.set(pageId, created);
+    return created;
+  }
+
   private async assertPointInteractable(page: Page, pageId: number, x: number, y: number): Promise<void> {
-    const pointCheck = await page.evaluate(
-      (targetX, targetY) => {
+    const pointCheck = (await page.evaluate(
+      ({ targetX, targetY }: { targetX: number; targetY: number }) => {
         const doc = (globalThis as { document?: { elementFromPoint?: (x: number, y: number) => unknown } }).document;
         const win = (globalThis as {
           window?: {
@@ -1619,9 +1740,8 @@ export class BrowserSlotManager {
           tag: element.tagName?.toLowerCase() ?? null
         };
       },
-      x,
-      y
-    );
+      { targetX: x, targetY: y }
+    )) as { ok: boolean; reason: 'out' | 'not-interactable' | 'disabled' | 'ok'; tag?: string | null };
 
     if (pointCheck.ok) {
       return;
@@ -1661,6 +1781,29 @@ export class BrowserSlotManager {
     const ext = input.format === 'jpeg' ? 'jpg' : input.format;
     const label = sanitizeLabel(input.label);
     return path.join(baseDir, `${Date.now()}-p${pageId}-${label}.${ext}`);
+  }
+
+  private async captureWebpViaCdp(
+    slot: BrowserSlot,
+    pageId: number,
+    page: Page,
+    input: { fullPage?: boolean; quality?: number }
+  ): Promise<Buffer> {
+    const session = await this.getOrCreateCdpSession(slot, pageId, page);
+    const payload = (await session.send('Page.captureScreenshot', {
+      format: 'webp',
+      quality: input.quality,
+      captureBeyondViewport: input.fullPage === true,
+      fromSurface: true
+    })) as { data?: string };
+
+    if (typeof payload.data !== 'string' || payload.data.length === 0) {
+      throw new AppError('Failed to capture webp screenshot via CDP.', {
+        code: ERROR_CODE.INTERNAL_ERROR
+      });
+    }
+
+    return Buffer.from(payload.data, 'base64');
   }
 
   private async resizeScreenshotIfNeeded(input: {
@@ -1794,24 +1937,25 @@ export class BrowserSlotManager {
       chromeFlags: headless ? ['--headless=new'] : []
     });
 
-    const browser = await connect({
-      browserURL: `http://127.0.0.1:${chrome.port}`,
-      defaultViewport: null
-    });
+    const browser = await chromium.connectOverCDP(`http://127.0.0.1:${chrome.port}`);
+    const contexts = browser.contexts();
+    const context = contexts[0] ?? (await browser.newContext());
 
     const slot: BrowserSlot = {
       contextKeyHash,
       chrome,
       browser,
+      context,
       pages: new Map<number, Page>(),
+      pageCdpSessions: new Map<number, CDPSession>(),
       selectedPageId: null,
       nextPageId: 1,
       headless,
-      defaultUserAgent: await browser.userAgent(),
+      defaultUserAgent: 'unknown',
       consoleEntries: [],
       nextConsoleId: 1,
       networkEntries: [],
-      requestToNetworkId: new WeakMap<HTTPRequest, number>(),
+      requestToNetworkId: new WeakMap<PWRequest, number>(),
       nextNetworkId: 1,
       pendingDialogs: new Map<number, Dialog>(),
       emulation: {
@@ -1823,9 +1967,13 @@ export class BrowserSlotManager {
       trace: null
     };
 
-    const initialPages = await browser.pages();
+    const defaultPage = await context.newPage();
+    slot.defaultUserAgent = await defaultPage.evaluate(() => navigator.userAgent);
+    await defaultPage.close();
+
+    const initialPages = context.pages();
     if (initialPages.length === 0) {
-      const initial = await browser.newPage();
+      const initial = await context.newPage();
       this.registerPage(slot, initial);
     } else {
       for (const page of initialPages) {
@@ -1855,6 +2003,11 @@ export class BrowserSlotManager {
     void this.applyEmulationToPage(slot, page);
 
     page.once('close', () => {
+      const session = slot.pageCdpSessions.get(id);
+      if (session) {
+        void session.detach().catch(() => {});
+        slot.pageCdpSessions.delete(id);
+      }
       slot.pages.delete(id);
       slot.pendingDialogs.delete(id);
       if (slot.selectedPageId === id) {
@@ -1965,7 +2118,7 @@ export class BrowserSlotManager {
     }
 
     const updated = await page.evaluate(
-      (targetSelector, targetValue) => {
+      ({ targetSelector, targetValue }: { targetSelector: string; targetValue: string }) => {
         const documentRef = (globalThis as { document?: { querySelector?: (s: string) => unknown } }).document;
         const node = documentRef?.querySelector?.(targetSelector) as {
           value?: string;
@@ -1994,8 +2147,7 @@ export class BrowserSlotManager {
 
         return true;
       },
-      selector,
-      value
+      { targetSelector: selector, targetValue: value }
     );
 
     if (!updated) {
@@ -2014,17 +2166,39 @@ export class BrowserSlotManager {
   }
 
   private async applyEmulationToPage(slot: BrowserSlot, page: Page): Promise<void> {
-    if (slot.emulation.viewport !== undefined) {
-      await page.setViewport(slot.emulation.viewport);
+    const pageId = this.findPageId(slot, page);
+    if (pageId === null) {
+      return;
+    }
+
+    if (slot.emulation.viewport) {
+      await page.setViewportSize({
+        width: slot.emulation.viewport.width,
+        height: slot.emulation.viewport.height
+      });
     }
 
     const userAgent = slot.emulation.userAgent ?? slot.defaultUserAgent;
-    await page.setUserAgent(userAgent);
+    const session = await this.getOrCreateCdpSession(slot, pageId, page);
+    await session.send('Network.enable');
+    await session.send('Network.setUserAgentOverride', {
+      userAgent
+    });
 
-    await page.emulateNetworkConditions(slot.emulation.networkConditions);
+    const network = slot.emulation.networkConditions;
+    await session.send('Network.emulateNetworkConditions', {
+      offline: false,
+      latency: network?.latency ?? 0,
+      downloadThroughput: network?.download ?? -1,
+      uploadThroughput: network?.upload ?? -1,
+      connectionType: 'none'
+    });
 
+    await slot.context.setGeolocation(slot.emulation.geolocation ?? null);
     if (slot.emulation.geolocation) {
-      await page.setGeolocation(slot.emulation.geolocation);
+      await slot.context.grantPermissions(['geolocation']);
+    } else {
+      await slot.context.clearPermissions();
     }
   }
 
@@ -2033,7 +2207,7 @@ export class BrowserSlotManager {
       return null;
     }
 
-    const fromTable = PredefinedNetworkConditions[networkProfile as keyof typeof PredefinedNetworkConditions];
+    const fromTable = NETWORK_PROFILE_TABLE[networkProfile];
     if (!fromTable) {
       throw new AppError(`Unsupported network profile: ${networkProfile}`, {
         code: ERROR_CODE.VALIDATION_ERROR,
@@ -2061,7 +2235,7 @@ export class BrowserSlotManager {
     }
 
     if (slot.pages.size === 0) {
-      const page = await slot.browser.newPage();
+      const page = await slot.context.newPage();
       const id = this.registerPage(slot, page);
       slot.selectedPageId = id;
     }
@@ -2120,6 +2294,13 @@ export class BrowserSlotManager {
   }
 
   private async closeSlot(slot: BrowserSlot): Promise<void> {
+    await Promise.all(
+      Array.from(slot.pageCdpSessions.values()).map(async (session) => {
+        await session.detach().catch(() => {});
+      })
+    );
+    slot.pageCdpSessions.clear();
+
     try {
       await slot.browser.close();
     } catch {
