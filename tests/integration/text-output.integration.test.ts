@@ -109,6 +109,43 @@ describe.skipIf(!hasChrome)('default text output', () => {
 });
 
 describe('daemon restart command', () => {
+  it('prints concise text for daemon start/status/stop', async () => {
+    const cwd = process.cwd();
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), 'cdt-daemon-text-'));
+
+    const env = {
+      ...process.env,
+      BROWSER_HOME: tempHome
+    };
+
+    try {
+      const statusBefore = await runCli(['daemon', 'status'], env, cwd);
+      expect(statusBefore.code).toBe(0);
+      expect(statusBefore.stdout.toLowerCase()).toContain('daemon stopped');
+
+      const start = await runCli(['daemon', 'start'], env, cwd);
+      expect(start.code).toBe(0);
+      expect(start.stdout.toLowerCase()).toContain('daemon running');
+      expect(start.stdout.toLowerCase()).toContain('pid:');
+
+      const statusRunning = await runCli(['daemon', 'status'], env, cwd);
+      expect(statusRunning.code).toBe(0);
+      expect(statusRunning.stdout.toLowerCase()).toContain('daemon running');
+      expect(statusRunning.stdout.toLowerCase()).toContain('socket:');
+
+      const stop = await runCli(['daemon', 'stop'], env, cwd);
+      expect(stop.code).toBe(0);
+      expect(stop.stdout.toLowerCase()).toContain('daemon stopped');
+
+      const stopAgain = await runCli(['daemon', 'stop'], env, cwd);
+      expect(stopAgain.code).toBe(0);
+      expect(stopAgain.stdout.toLowerCase()).toContain('daemon already stopped');
+    } finally {
+      await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  });
+
   it('restarts daemon and prints concise text output by default', async () => {
     const cwd = process.cwd();
     const tempHome = await mkdtemp(path.join(os.tmpdir(), 'cdt-daemon-restart-'));
@@ -119,6 +156,9 @@ describe('daemon restart command', () => {
     };
 
     try {
+      const start = await runCli(['daemon', 'start'], env, cwd);
+      expect(start.code).toBe(0);
+
       const restart = await runCli(['daemon', 'restart'], env, cwd);
       expect(restart.code).toBe(0);
       expect(restart.stdout.toLowerCase()).toContain('daemon restarted');
@@ -126,8 +166,11 @@ describe('daemon restart command', () => {
 
       const status = await runCli(['daemon', 'status', '--output', 'json'], env, cwd);
       expect(status.code).toBe(0);
-      expect(status.stdout).toContain('"ok":true');
-      expect(status.stdout).toContain('"pid"');
+      const statusBody = parseEnvelope(status.stdout);
+      expect(statusBody.ok).toBe(true);
+      const data = (statusBody.data ?? {}) as { running?: boolean; pid?: number };
+      expect(data.running).not.toBe(false);
+      expect(typeof data.pid).toBe('number');
     } finally {
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
       await rm(tempHome, { recursive: true, force: true });

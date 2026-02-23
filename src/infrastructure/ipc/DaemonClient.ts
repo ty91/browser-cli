@@ -66,6 +66,32 @@ export class DaemonClient {
     return response.ok;
   }
 
+  public async stopAndWait(
+    context: DaemonContext,
+    timeoutMs = 5_000
+  ): Promise<{ requestedStop: boolean; stopped: boolean }> {
+    if (!(await this.isReachable(context))) {
+      return {
+        requestedStop: false,
+        stopped: true
+      };
+    }
+
+    const response = await this.send(IPC_OP.DAEMON_STOP, {}, context);
+    if (!response.ok) {
+      return {
+        requestedStop: true,
+        stopped: false
+      };
+    }
+
+    await this.waitUntilStopped(context, timeoutMs);
+    return {
+      requestedStop: true,
+      stopped: true
+    };
+  }
+
   private async startDetachedProcess(): Promise<void> {
     await mkdir(resolveBrokerDir(this.homeDir), { recursive: true });
 
@@ -113,6 +139,23 @@ export class DaemonClient {
       code: ERROR_CODE.DAEMON_UNAVAILABLE,
       details: { socketPath: this.socketPath, timeoutMs },
       suggestions: ['Check daemon log and retry: browser start --output json']
+    });
+  }
+
+  private async waitUntilStopped(context: DaemonContext, timeoutMs: number): Promise<void> {
+    const started = Date.now();
+
+    while (Date.now() - started < timeoutMs) {
+      if (!(await this.isReachable(context))) {
+        return;
+      }
+      await sleep(80);
+    }
+
+    throw new AppError('Failed to stop broker daemon.', {
+      code: ERROR_CODE.DAEMON_UNAVAILABLE,
+      details: { socketPath: this.socketPath, timeoutMs },
+      suggestions: ['Retry: browser daemon stop', 'If problem persists, wait briefly and run: browser daemon restart']
     });
   }
 
