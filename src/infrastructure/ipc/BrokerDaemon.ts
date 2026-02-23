@@ -1483,6 +1483,7 @@ export class BrokerDaemon {
     if (pid) {
       try {
         process.kill(pid.pid, 0);
+        return;
       } catch {
         await this.cleanupArtifacts();
       }
