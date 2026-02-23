@@ -15,7 +15,6 @@ import { registerElementCommands } from './commands/element.js';
 import { registerInputCommands } from './commands/input.js';
 import { registerDialogCommands } from './commands/dialog.js';
 import { registerRuntimeCommands } from './commands/runtime.js';
-import { registerCaptureCommands } from './commands/capture.js';
 import { registerSnapshotCommand } from './commands/snapshot.js';
 import { registerScreenshotCommand } from './commands/screenshot.js';
 import { registerRefActionCommands } from './commands/ref-actions.js';
@@ -228,7 +227,6 @@ export const createProgram = (): Command => {
   registerInputCommands(program, getContext, onResponse);
   registerDialogCommands(program, getContext, onResponse);
   registerRuntimeCommands(program, getContext, onResponse);
-  registerCaptureCommands(program, getContext, onResponse);
   registerSnapshotCommand(program, getContext, onResponse);
   registerScreenshotCommand(program, getContext, onResponse);
   registerRefActionCommands(program, getContext, onResponse);

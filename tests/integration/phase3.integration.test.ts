@@ -67,6 +67,21 @@ const runCli = async (
 
 const parseEnvelope = (stdout: string): CliEnvelope => JSON.parse(stdout) as CliEnvelope;
 
+const findRefByText = (snapshotText: string, marker: string): string => {
+  for (const line of snapshotText.split('\n')) {
+    if (!line.includes(marker)) {
+      continue;
+    }
+
+    const match = line.match(/\[ref=(e\d+)\]/);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  throw new Error(`Ref not found for marker: ${marker}`);
+};
+
 const handleRoot = (request: IncomingMessage, response: ServerResponse): void => {
   const html = [
     '<!doctype html>',
@@ -172,7 +187,6 @@ describe.skipIf(!hasChrome)('phase 3 integration', () => {
 
     const uploadPath = path.join(tempFiles, 'upload.txt');
     const fillEntriesPath = path.join(tempFiles, 'entries.json');
-    const screenshotPath = path.join(tempFiles, 'screen.png');
     const tracePath = path.join(tempFiles, 'trace.json');
     const requestBodyPath = path.join(tempFiles, 'request.txt');
     const responseBodyPath = path.join(tempFiles, 'response.txt');
@@ -191,34 +205,13 @@ describe.skipIf(!hasChrome)('phase 3 integration', () => {
       const start = await runCli(['start', '--headless', '--output', 'json'], env, cwd);
       expect(start.code).toBe(0);
 
-      const openMain = await runCli(['page', 'open', '--url', fixture.origin, '--output', 'json'], env, cwd);
+      const openMain = await runCli(['open', fixture.origin, '--output', 'json'], env, cwd);
       expect(openMain.code).toBe(0);
       const openMainBody = parseEnvelope(openMain.stdout);
       const mainPageId = Number(
         ((openMainBody.data as { page?: { id?: number } })?.page?.id as number | undefined) ?? 0
       );
       expect(mainPageId).toBeGreaterThan(0);
-
-      const openSecond = await runCli(
-        ['page', 'open', '--url', `${fixture.origin}/second`, '--output', 'json'],
-        env,
-        cwd
-      );
-      expect(openSecond.code).toBe(0);
-      const secondPageId = Number(
-        ((parseEnvelope(openSecond.stdout).data as { page?: { id?: number } })?.page?.id as number | undefined) ?? 0
-      );
-      expect(secondPageId).toBeGreaterThan(0);
-
-      const closeSecond = await runCli(
-        ['page', 'close', '--page', String(secondPageId), '--output', 'json'],
-        env,
-        cwd
-      );
-      expect(closeSecond.code).toBe(0);
-
-      const useMain = await runCli(['page', 'use', '--page', String(mainPageId), '--output', 'json'], env, cwd);
-      expect(useMain.code).toBe(0);
 
       const resize = await runCli(
         ['page', 'resize', '--page', String(mainPageId), '--width', '900', '--height', '700', '--output', 'json'],
@@ -234,11 +227,11 @@ describe.skipIf(!hasChrome)('phase 3 integration', () => {
       );
       expect(fillForm.code).toBe(0);
 
-      const hover = await runCli(
-        ['element', 'hover', '--page', String(mainPageId), '--uid', '#hover-target', '--output', 'json'],
-        env,
-        cwd
-      );
+      const snapshot = await runCli(['snapshot'], env, cwd);
+      expect(snapshot.code).toBe(0);
+      const hoverRef = findRefByText(snapshot.stdout, 'Hover Me');
+
+      const hover = await runCli(['hover', hoverRef, '--output', 'json'], env, cwd);
       expect(hover.code).toBe(0);
 
       const hoverWait = await runCli(
@@ -343,13 +336,11 @@ describe.skipIf(!hasChrome)('phase 3 integration', () => {
       );
       expect(dialogWait.code).toBe(0);
 
-      const screenshot = await runCli(
-        ['capture', 'screenshot', '--page', String(mainPageId), '--file', screenshotPath, '--full-page', '--output', 'json'],
-        env,
-        cwd
-      );
+      const screenshot = await runCli(['screenshot', '--tab', '2', '--full', '--output', 'json'], env, cwd);
       expect(screenshot.code).toBe(0);
-      expect((await stat(screenshotPath)).size).toBeGreaterThan(0);
+      const screenshotData = parseEnvelope(screenshot.stdout).data as { filePath?: string };
+      expect(typeof screenshotData.filePath).toBe('string');
+      expect((await stat(String(screenshotData.filePath))).size).toBeGreaterThan(0);
 
       const consoleEval = await runCli(
         [

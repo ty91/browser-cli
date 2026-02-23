@@ -60,7 +60,7 @@ const parseEnvelope = (stdout: string): CliEnvelope => JSON.parse(stdout) as Cli
 const hasChrome = BrowserSlotManager.resolveChromePath() !== null;
 
 describe.skipIf(!hasChrome)('navigation commands integration', () => {
-  it('supports root open/navigate and keeps page commands with deprecation warnings', async () => {
+  it('supports root open/navigate commands', async () => {
     const cwd = process.cwd();
     const tempHome = await mkdtemp(path.join(os.tmpdir(), 'cdt-nav-'));
 
@@ -72,9 +72,6 @@ describe.skipIf(!hasChrome)('navigation commands integration', () => {
 
     const pageA = 'data:text/html,%3Chtml%3E%3Chead%3E%3Ctitle%3ENavA%3C/title%3E%3C/head%3E%3Cbody%3EA%3C/body%3E%3C/html%3E';
     const pageB = 'data:text/html,%3Chtml%3E%3Chead%3E%3Ctitle%3ENavB%3C/title%3E%3C/head%3E%3Cbody%3EB%3C/body%3E%3C/html%3E';
-    const pageC = 'data:text/html,%3Chtml%3E%3Chead%3E%3Ctitle%3ENavC%3C/title%3E%3C/head%3E%3Cbody%3EC%3C/body%3E%3C/html%3E';
-    const pageD = 'data:text/html,%3Chtml%3E%3Chead%3E%3Ctitle%3ENavD%3C/title%3E%3C/head%3E%3Cbody%3ED%3C/body%3E%3C/html%3E';
-
     try {
       const start = await runCli(['start', '--headless', '--output', 'json'], env, cwd);
       expect(start.code).toBe(0);
@@ -103,25 +100,6 @@ describe.skipIf(!hasChrome)('navigation commands integration', () => {
       expect(titleAfterNavigate.code).toBe(0);
       expect((parseEnvelope(titleAfterNavigate.stdout).data as { value?: string }).value).toBe('NavB');
 
-      const pageOpenDeprecated = await runCli(['page', 'open', '--url', pageC, '--output', 'json'], env, cwd);
-      expect(pageOpenDeprecated.code).toBe(0);
-      expect(pageOpenDeprecated.stderr.toLowerCase()).toContain('deprecated');
-
-      const pageNavigateDeprecated = await runCli(
-        ['page', 'navigate', '--url', pageD, '--output', 'json'],
-        env,
-        cwd
-      );
-      expect(pageNavigateDeprecated.code).toBe(0);
-      expect(pageNavigateDeprecated.stderr.toLowerCase()).toContain('deprecated');
-
-      const titleAfterDeprecatedNavigate = await runCli(
-        ['runtime', 'eval', '--function', '() => document.title', '--output', 'json'],
-        env,
-        cwd
-      );
-      expect(titleAfterDeprecatedNavigate.code).toBe(0);
-      expect((parseEnvelope(titleAfterDeprecatedNavigate.stdout).data as { value?: string }).value).toBe('NavD');
     } finally {
       await runCli(['stop', '--output', 'json'], env, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);

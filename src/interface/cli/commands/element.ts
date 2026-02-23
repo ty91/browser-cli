@@ -106,32 +106,6 @@ export const registerElementCommands = (
     });
 
   element
-    .command('click')
-    .description('Click target element')
-    .requiredOption('--uid <selector>', 'CSS selector')
-    .option('--page <id>', 'target page id (default: current page)')
-    .action(async (opts: { uid: string; page?: string }) => {
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.ELEMENT_CLICK, {
-        pageId: toPageId(opts.page),
-        selector: opts.uid
-      });
-      await onResponse(response.ok, response);
-    });
-
-  element
-    .command('hover')
-    .description('Hover target element')
-    .requiredOption('--uid <selector>', 'CSS selector')
-    .option('--page <id>', 'target page id (default: current page)')
-    .action(async (opts: { uid: string; page?: string }) => {
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.ELEMENT_HOVER, {
-        pageId: toPageId(opts.page),
-        selector: opts.uid
-      });
-      await onResponse(response.ok, response);
-    });
-
-  element
     .command('drag')
     .description('Drag an element onto another element')
     .requiredOption('--from <selector>', 'source CSS selector')

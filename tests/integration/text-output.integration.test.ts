@@ -241,10 +241,6 @@ describe.skipIf(!hasChrome)('screenshot command', () => {
         await access(shotTab2Path);
       }
 
-      const deprecated = await runCli(['capture', 'screenshot'], env, cwd);
-      expect(deprecated.code).toBe(0);
-      expect(deprecated.stderr.toLowerCase()).toContain('deprecated');
-      expect(deprecated.stderr.toLowerCase()).toContain('browser screenshot');
     } finally {
       await runCli(['stop', '--output', 'json'], env, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
@@ -309,10 +305,6 @@ describe.skipIf(!hasChrome)('snapshot command', () => {
         expect(totalLines).toBe(outputLines);
       }
 
-      const deprecated = await runCli(['capture', 'snapshot'], env, cwd);
-      expect(deprecated.code).toBe(0);
-      expect(deprecated.stderr.toLowerCase()).toContain('deprecated');
-      expect(deprecated.stderr.toLowerCase()).toContain('browser snapshot');
     } finally {
       await runCli(['stop', '--output', 'json'], env, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);

@@ -3,7 +3,6 @@ import type { Command } from 'commander';
 import { AppError } from '../../../shared/errors/AppError.js';
 import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
-import { writeDiagnostic } from '../output.js';
 import { sendDaemonCommand, type CommandContext } from './common.js';
 
 const toPageId = (input?: string): number | undefined => {
@@ -27,107 +26,7 @@ export const registerPageCommands = (
   getCtx: () => CommandContext,
   onResponse: (ok: boolean, response: unknown) => Promise<void>
 ): void => {
-  const page = root.command('page').description('Page operations');
-
-  page
-    .command('open')
-    .description('Open new page in current context (deprecated: use browser open <url>)')
-    .requiredOption('--url <url>', 'target url')
-    .option('--describe', 'Show command schema and examples')
-    .action(async (opts: { url: string; describe?: boolean }) => {
-      if (opts.describe) {
-        await onResponse(true, {
-          command: 'page open',
-          payload: { url: 'string (required)' },
-          examples: ['browser page open --url https://example.com', 'browser open https://example.com']
-        });
-        return;
-      }
-
-      writeDiagnostic('[deprecated] Use "browser open <url>" instead of "browser page open --url <url>".');
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_OPEN, {
-        url: opts.url
-      });
-      await onResponse(response.ok, response);
-    });
-
-  page
-    .command('list')
-    .description('List pages in current context')
-    .option('--describe', 'Show command schema and examples')
-    .action(async (opts: { describe?: boolean }) => {
-      if (opts.describe) {
-        await onResponse(true, {
-          command: 'page list',
-          payload: {},
-          examples: ['browser page list --output json']
-        });
-        return;
-      }
-
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_LIST, {});
-      await onResponse(response.ok, response);
-    });
-
-  page
-    .command('use')
-    .description('Select page as current page')
-    .requiredOption('--page <id>', 'page id')
-    .option('--describe', 'Show command schema and examples')
-    .action(async (opts: { page: string; describe?: boolean }) => {
-      if (opts.describe) {
-        await onResponse(true, {
-          command: 'page use',
-          payload: { page: 'number (required)' },
-          examples: ['browser page use --page 1']
-        });
-        return;
-      }
-
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_USE, {
-        pageId: toPageId(opts.page)
-      });
-      await onResponse(response.ok, response);
-    });
-
-  page
-    .command('close')
-    .description('Close current/selected page')
-    .option('--page <id>', 'target page id (default: current page)')
-    .action(async (opts: { page?: string }) => {
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_CLOSE, {
-        pageId: toPageId(opts.page)
-      });
-      await onResponse(response.ok, response);
-    });
-
-  page
-    .command('navigate')
-    .description('Navigate current/selected page (deprecated: use browser navigate <url>)')
-    .requiredOption('--url <url>', 'target url')
-    .option('--page <id>', 'target page id (default: current page)')
-    .option('--describe', 'Show command schema and examples')
-    .action(async (opts: { page?: string; url: string; describe?: boolean }) => {
-      if (opts.describe) {
-        await onResponse(true, {
-          command: 'page navigate',
-          payload: { url: 'string (required)', page: 'number (optional)' },
-          examples: [
-            'browser page navigate --url https://example.com',
-            'browser page navigate --page 2 --url https://example.com',
-            'browser navigate https://example.com'
-          ]
-        });
-        return;
-      }
-
-      writeDiagnostic('[deprecated] Use "browser navigate <url>" instead of "browser page navigate --url <url>".');
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.PAGE_NAVIGATE, {
-        pageId: toPageId(opts.page),
-        url: opts.url
-      });
-      await onResponse(response.ok, response);
-    });
+  const page = root.command('page').description('Page wait/viewport operations');
 
   page
     .command('resize')

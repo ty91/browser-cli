@@ -76,34 +76,6 @@ export const registerInputCommands = (
   const input = root.command('input').description('Keyboard and mouse input');
 
   input
-    .command('key')
-    .description('Press key or key-combo')
-    .requiredOption('--key <key>', 'key name (e.g. Enter, Tab, ArrowDown)')
-    .option('--page <id>', 'target page id (default: current page)')
-    .action(async (opts: { key: string; page?: string }) => {
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.INPUT_KEY, {
-        pageId: toPageId(opts.page),
-        key: opts.key
-      });
-      await onResponse(response.ok, response);
-    });
-
-  input
-    .command('type')
-    .description('Type text into currently focused element')
-    .requiredOption('--text <text>', 'text to type')
-    .option('--delay-ms <n>', 'delay per character in milliseconds')
-    .option('--page <id>', 'target page id (default: current page)')
-    .action(async (opts: { text: string; delayMs?: string; page?: string }) => {
-      const response = await sendDaemonCommand(getCtx(), IPC_OP.INPUT_TYPE, {
-        pageId: toPageId(opts.page),
-        text: opts.text,
-        delayMs: toPositiveInt('delay-ms', opts.delayMs)
-      });
-      await onResponse(response.ok, response);
-    });
-
-  input
     .command('mouse-move')
     .description('Move mouse cursor to coordinates')
     .requiredOption('--x <n>', 'x coordinate')

@@ -54,6 +54,21 @@ const parseEnvelope = (stdout: string): Record<string, any> =>
 
 const hasChrome = BrowserSlotManager.resolveChromePath() !== null;
 
+const findRefByText = (snapshotText: string, marker: string): string => {
+  for (const line of snapshotText.split('\n')) {
+    if (!line.includes(marker)) {
+      continue;
+    }
+
+    const match = line.match(/\[ref=(e\d+)\]/);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  throw new Error(`Ref not found for marker: ${marker}`);
+};
+
 describe.skipIf(!hasChrome)('session integration', () => {
   it('starts, reuses, and stops session in same context', async () => {
     const cwd = process.cwd();
@@ -162,13 +177,11 @@ describe.skipIf(!hasChrome)('session integration', () => {
       const start = await runCli(['start', '--headless', '--output', 'json'], env, cwd);
       expect(start.code).toBe(0);
 
-      const opened = await runCli(['page', 'open', '--url', dataUrl, '--output', 'json'], env, cwd);
+      const opened = await runCli(['open', dataUrl, '--output', 'json'], env, cwd);
       expect(opened.code).toBe(0);
-      const openBody = parseEnvelope(opened.stdout);
-      const openedPage = (openBody.data as { page: { id: number } }).page;
 
       const evalTitle = await runCli(
-        ['runtime', 'eval', '--page', String(openedPage.id), '--function', '() => document.title', '--output', 'json'],
+        ['runtime', 'eval', '--function', '() => document.title', '--output', 'json'],
         env,
         cwd
       );
@@ -176,7 +189,7 @@ describe.skipIf(!hasChrome)('session integration', () => {
       expect((parseEnvelope(evalTitle.stdout).data as { value: string }).value).toBe('CDT Phase2');
 
       const fill = await runCli(
-        ['element', 'fill', '--page', String(openedPage.id), '--uid', '#q', '--value', 'hello', '--output', 'json'],
+        ['element', 'fill', '--uid', '#q', '--value', 'hello', '--output', 'json'],
         env,
         cwd
       );
@@ -186,8 +199,6 @@ describe.skipIf(!hasChrome)('session integration', () => {
         [
           'runtime',
           'eval',
-          '--page',
-          String(openedPage.id),
           '--function',
           "() => { const el = document.querySelector('#q'); if (el && typeof el.focus === 'function') { el.focus(); } return document.activeElement && document.activeElement.id; }",
           '--output',
@@ -198,22 +209,18 @@ describe.skipIf(!hasChrome)('session integration', () => {
       );
       expect(focus.code).toBe(0);
 
-      const key = await runCli(
-        ['input', 'key', '--page', String(openedPage.id), '--key', 'A', '--output', 'json'],
-        env,
-        cwd
-      );
+      const key = await runCli(['press', 'A', '--output', 'json'], env, cwd);
       expect(key.code).toBe(0);
 
-      const click = await runCli(
-        ['element', 'click', '--page', String(openedPage.id), '--uid', '#btn', '--output', 'json'],
-        env,
-        cwd
-      );
+      const snapshotText = await runCli(['snapshot'], env, cwd);
+      expect(snapshotText.code).toBe(0);
+      const buttonRef = findRefByText(snapshotText.stdout, 'Go');
+
+      const click = await runCli(['click', buttonRef, '--output', 'json'], env, cwd);
       expect(click.code).toBe(0);
 
       const waitText = await runCli(
-        ['page', 'wait-text', '--page', String(openedPage.id), '--text', 'Clicked', '--timeout', '3000', '--output', 'json'],
+        ['page', 'wait-text', '--text', 'Clicked', '--timeout', '3000', '--output', 'json'],
         env,
         cwd
       );
@@ -223,8 +230,6 @@ describe.skipIf(!hasChrome)('session integration', () => {
         [
           'runtime',
           'eval',
-          '--page',
-          String(openedPage.id),
           '--function',
           "() => ({ value: document.querySelector('#q') && document.querySelector('#q').value, clicked: window.__clicked === true })",
           '--output',
@@ -238,19 +243,15 @@ describe.skipIf(!hasChrome)('session integration', () => {
       expect(state.value).toContain('hello');
       expect(state.clicked).toBe(true);
 
-      const snapshot = await runCli(
-        ['capture', 'snapshot', '--page', String(openedPage.id), '--output', 'json'],
-        env,
-        cwd
-      );
+      const snapshot = await runCli(['snapshot', '--output', 'json'], env, cwd);
       expect(snapshot.code).toBe(0);
       const snapshotBody = parseEnvelope(snapshot.stdout);
-      expect((snapshotBody.data as { snapshot: { html: string } }).snapshot.html).toContain('id="q"');
+      expect((snapshotBody.data as { snapshot?: { text?: string } }).snapshot?.text ?? '').toContain('[ref=');
 
-      const listed = await runCli(['page', 'list', '--output', 'json'], env, cwd);
+      const listed = await runCli(['tabs', '--output', 'json'], env, cwd);
       expect(listed.code).toBe(0);
-      const pages = (parseEnvelope(listed.stdout).data as { pages: Array<{ id: number }> }).pages;
-      expect(pages.some((item) => item.id === openedPage.id)).toBe(true);
+      const tabs = (parseEnvelope(listed.stdout).data as { tabs: Array<{ index: number }> }).tabs;
+      expect(tabs.length).toBeGreaterThan(0);
     } finally {
       await runCli(['stop', '--output', 'json'], env, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
@@ -279,7 +280,7 @@ describe.skipIf(!hasChrome)('session integration', () => {
       expect(startedBody.ok).toBe(true);
       expect(startedBody.data.context.resolvedBy).toBe('fingerprint');
 
-      const opened = await runCli(['page', 'open', '--url', dataUrl, '--output', 'json'], env, cwd);
+      const opened = await runCli(['open', dataUrl, '--output', 'json'], env, cwd);
       expect(opened.code).toBe(0);
       const openedBody = parseEnvelope(opened.stdout);
       expect(openedBody.ok).toBe(true);

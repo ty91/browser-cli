@@ -154,7 +154,7 @@ const NETWORK_PROFILE_TABLE: Record<string, NetworkConditions> = {
 };
 
 const selectorSuggestions = (selector: string): string[] => [
-  `Run: cdt capture snapshot --output json and verify selector ${selector}`,
+  `Run: browser snapshot --output json and verify selector ${selector}`,
   'Use a valid CSS selector via --uid'
 ];
 
@@ -2294,7 +2294,7 @@ export class BrowserSlotManager {
       throw new AppError(`Element cannot be filled: ${selector}`, {
         code: ERROR_CODE.ELEMENT_NOT_FOUND,
         details: { selector, pageId },
-        suggestions: ['Target an input/textarea/contenteditable element.', 'Run: cdt capture snapshot --output json']
+        suggestions: ['Target an input/textarea/contenteditable element.', 'Run: browser snapshot --output json']
       });
     }
   }

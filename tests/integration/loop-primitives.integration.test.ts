@@ -140,7 +140,6 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
   it('supports observe, coordinate actions, waits, and screenshot metadata', async () => {
     const cwd = process.cwd();
     const tempHome = await mkdtemp(path.join(os.tmpdir(), 'cdt-loop-'));
-    const tempArtifacts = await mkdtemp(path.join(os.tmpdir(), 'cdt-loop-artifacts-'));
     const fixture = await startFixtureServer();
 
     const env = {
@@ -153,7 +152,7 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
       const start = await runCli(['start', '--headless', '--output', 'json'], env, cwd);
       expect(start.code).toBe(0);
 
-      const open = await runCli(['page', 'open', '--url', fixture.origin, '--output', 'json'], env, cwd);
+      const open = await runCli(['open', fixture.origin, '--output', 'json'], env, cwd);
       expect(open.code).toBe(0);
 
       const observeState = await runCli(['observe', 'state', '--output', 'json'], env, cwd);
@@ -222,24 +221,6 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
       );
       expect(waitUrl.code).toBe(0);
 
-      const focusInput = await runCli(
-        ['runtime', 'eval', '--function', "() => { const el = document.querySelector('#name'); el.focus(); return true; }", '--output', 'json'],
-        env,
-        cwd
-      );
-      expect(focusInput.code).toBe(0);
-
-      const type = await runCli(['input', 'type', '--text', 'hello-loop', '--output', 'json'], env, cwd);
-      expect(type.code).toBe(0);
-
-      const readInput = await runCli(
-        ['runtime', 'eval', '--function', "() => document.querySelector('#name').value", '--output', 'json'],
-        env,
-        cwd
-      );
-      expect(readInput.code).toBe(0);
-      expect((parseEnvelope(readInput.stdout).data as { value: string }).value).toBe('hello-loop');
-
       const scroll = await runCli(['input', 'scroll', '--dy', '900', '--output', 'json'], env, cwd);
       expect(scroll.code).toBe(0);
 
@@ -251,26 +232,7 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
       expect(readScroll.code).toBe(0);
       expect((parseEnvelope(readScroll.stdout).data as { value: number }).value).toBeGreaterThan(0);
 
-      const screenshot = await runCli(
-        [
-          'capture',
-          'screenshot',
-          '--dir',
-          tempArtifacts,
-          '--label',
-          'loop',
-          '--max-width',
-          '600',
-          '--max-height',
-          '400',
-          '--keep',
-          '5',
-          '--output',
-          'json'
-        ],
-        env,
-        cwd
-      );
+      const screenshot = await runCli(['screenshot', '--output', 'json'], env, cwd);
       expect(screenshot.code).toBe(0);
       const shotData = parseEnvelope(screenshot.stdout).data as {
         filePath: string;
@@ -291,7 +253,6 @@ describe.skipIf(!hasChrome)('loop primitives integration', () => {
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
       await fixture.close();
       await rm(tempHome, { recursive: true, force: true });
-      await rm(tempArtifacts, { recursive: true, force: true });
     }
   }, 60_000);
 });
