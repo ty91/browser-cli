@@ -20,6 +20,7 @@ import {
 
 import { AppError } from '../../shared/errors/AppError.js';
 import { ERROR_CODE } from '../../shared/errors/ErrorCode.js';
+import { renderAriaSnapshotTree } from './ariaSnapshot.js';
 import { resolveContextDir } from '../store/paths.js';
 
 type ConsoleEntry = {
@@ -1081,6 +1082,34 @@ export class BrowserSlotManager {
       snapshot: {
         html,
         length: html.length
+      }
+    };
+  }
+
+  public async snapshotAria(contextKeyHash: string, input: { pageId?: number }): Promise<{
+    page: PageSummary;
+    snapshot: {
+      format: 'aria-ref-like';
+      tree: string;
+      nodeCount: number;
+      capturedAt: string;
+    };
+  }> {
+    const slot = this.ensureSlot(contextKeyHash);
+    const { pageId, page } = this.resolvePage(slot, input.pageId);
+
+    const root = await page.accessibility.snapshot({
+      interestingOnly: false
+    });
+    const rendered = renderAriaSnapshotTree(root);
+
+    return {
+      page: await this.toPageSummary(slot, pageId, page),
+      snapshot: {
+        format: 'aria-ref-like',
+        tree: rendered.text,
+        nodeCount: rendered.nodeCount,
+        capturedAt: new Date().toISOString()
       }
     };
   }

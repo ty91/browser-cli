@@ -193,6 +193,10 @@ const snapshotSchema = z.object({
   pageId: pageIdSchema.optional()
 });
 
+const snapshotAriaSchema = z.object({
+  pageId: pageIdSchema.optional()
+});
+
 const screenshotSchema = z.object({
   pageId: pageIdSchema.optional(),
   filePath: z.string().optional(),
@@ -1019,6 +1023,22 @@ export class BrokerDaemon {
         const data = await this.withContextAccess(
           context,
           async (contextKeyHash) => this.slotManager.snapshot(contextKeyHash, { pageId: payload.pageId }),
+          { queue: true }
+        );
+
+        return {
+          id: request.id,
+          ok: true,
+          data,
+          meta: { durationMs: Date.now() - started }
+        };
+      }
+
+      if (request.op === IPC_OP.SNAPSHOT_ARIA) {
+        const payload = snapshotAriaSchema.parse(request.payload);
+        const data = await this.withContextAccess(
+          context,
+          async (contextKeyHash) => this.slotManager.snapshotAria(contextKeyHash, { pageId: payload.pageId }),
           { queue: true }
         );
 

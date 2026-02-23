@@ -13,6 +13,11 @@ type CliResult = {
   stderr: string;
 };
 
+type CliEnvelope = {
+  ok: boolean;
+  data?: Record<string, unknown>;
+};
+
 const runCli = async (args: string[], env: NodeJS.ProcessEnv, cwd: string): Promise<CliResult> => {
   const rootDir = path.resolve(cwd);
   const tsxCli = path.join(rootDir, 'node_modules', 'tsx', 'dist', 'cli.mjs');
@@ -45,6 +50,8 @@ const runCli = async (args: string[], env: NodeJS.ProcessEnv, cwd: string): Prom
     });
   });
 };
+
+const parseEnvelope = (stdout: string): CliEnvelope => JSON.parse(stdout) as CliEnvelope;
 
 const hasChrome = BrowserSlotManager.resolveChromePath() !== null;
 
@@ -177,6 +184,70 @@ describe.skipIf(!hasChrome)('screenshot command', () => {
       expect(deprecated.code).toBe(0);
       expect(deprecated.stderr.toLowerCase()).toContain('deprecated');
       expect(deprecated.stderr.toLowerCase()).toContain('browser screenshot');
+    } finally {
+      await runCli(['stop', '--output', 'json'], env, cwd);
+      await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);
+      await rm(tempHome, { recursive: true, force: true });
+    }
+  }, 45_000);
+});
+
+describe.skipIf(!hasChrome)('snapshot command', () => {
+  it('prints aria-ref-like snapshot and truncates after 1500 lines', async () => {
+    const cwd = process.cwd();
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), 'browser-snapshot-'));
+
+    const env = {
+      ...process.env,
+      BROWSER_HOME: tempHome,
+      CDT_CONTEXT_ID: 'snapshot-output'
+    };
+
+    const smallPage = 'data:text/html,%3Chtml%3E%3Chead%3E%3Ctitle%3ESnapshotSmall%3C/title%3E%3C/head%3E%3Cbody%3E%3Cbutton%3EOne%3C/button%3E%3C/body%3E%3C/html%3E';
+    const pageHtml = `<!doctype html><html><head><title>SnapshotBig</title></head><body><main id="root"></main><script>const root=document.getElementById("root");for(let i=0;i<6000;i++){const b=document.createElement("button");b.textContent="Button "+i;root.appendChild(b);}</script></body></html>`;
+    const pageUrl = `data:text/html,${encodeURIComponent(pageHtml)}`;
+
+    try {
+      const start = await runCli(['start', '--headless'], env, cwd);
+      expect(start.code).toBe(0);
+
+      const open = await runCli(['open', pageUrl], env, cwd);
+      expect(open.code).toBe(0);
+
+      const snapshot = await runCli(['snapshot'], env, cwd);
+      expect(snapshot.code).toBe(0);
+      expect(snapshot.stdout).toContain('snapshot (do-not-commit)');
+      expect(snapshot.stdout).toContain('[ref=r1]');
+      const lines = snapshot.stdout.split('\n');
+      expect(lines.length).toBeLessThanOrEqual(1500);
+
+      const openSmall = await runCli(['open', smallPage], env, cwd);
+      expect(openSmall.code).toBe(0);
+
+      const snapshotJson = await runCli(['snapshot', '--output', 'json'], env, cwd);
+      expect(snapshotJson.code).toBe(0);
+      const body = parseEnvelope(snapshotJson.stdout);
+      expect(body.ok).toBe(true);
+      const snapshotData = (body.data as { snapshot?: Record<string, unknown> })?.snapshot ?? {};
+      expect(snapshotData.format).toBe('aria-ref-like');
+      const truncated = snapshotData.truncated;
+      const totalLines = snapshotData.totalLines;
+      const outputLines = snapshotData.outputLines;
+      expect(typeof truncated).toBe('boolean');
+      expect(typeof totalLines).toBe('number');
+      expect(typeof outputLines).toBe('number');
+      expect(outputLines as number).toBeLessThanOrEqual(1500);
+      expect(totalLines as number).toBeGreaterThanOrEqual(outputLines as number);
+      if (truncated === true) {
+        expect(outputLines).toBe(1500);
+      } else {
+        expect(totalLines).toBe(outputLines);
+      }
+
+      const deprecated = await runCli(['capture', 'snapshot'], env, cwd);
+      expect(deprecated.code).toBe(0);
+      expect(deprecated.stderr.toLowerCase()).toContain('deprecated');
+      expect(deprecated.stderr.toLowerCase()).toContain('browser snapshot');
     } finally {
       await runCli(['stop', '--output', 'json'], env, cwd);
       await runCli(['daemon', 'stop', '--output', 'json'], env, cwd);

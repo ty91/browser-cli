@@ -37,6 +37,7 @@ export const IPC_OP = {
   INPUT_SCROLL: 'input.scroll',
   DIALOG_HANDLE: 'dialog.handle',
   CAPTURE_SNAPSHOT: 'capture.snapshot',
+  SNAPSHOT_ARIA: 'snapshot.aria',
   CAPTURE_SCREENSHOT: 'capture.screenshot',
   CONSOLE_LIST: 'console.list',
   CONSOLE_GET: 'console.get',

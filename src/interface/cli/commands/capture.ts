@@ -50,6 +50,7 @@ export const registerCaptureCommands = (
     .description('Capture HTML snapshot from target page')
     .option('--page <id>', 'target page id (default: current page)')
     .action(async (opts: { page?: string }) => {
+      writeDiagnostic('[deprecated] Use "browser snapshot" instead of "browser capture snapshot".');
       const response = await sendDaemonCommand(getCtx(), IPC_OP.CAPTURE_SNAPSHOT, {
         pageId: toPageId(opts.page)
       });
