@@ -204,9 +204,6 @@ export const registerPageCommands = (
     });
 
   page.action(async () => {
-    throw new AppError('Missing page subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: browser page --help']
-    });
+    page.outputHelp();
   });
 };

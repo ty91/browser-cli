@@ -220,9 +220,6 @@ export const registerInputCommands = (
     });
 
   input.action(async () => {
-    throw new AppError('Missing input subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt input --help']
-    });
+    input.outputHelp();
   });
 };

@@ -51,9 +51,6 @@ export const registerDialogCommands = (
     });
 
   dialog.action(async () => {
-    throw new AppError('Missing dialog subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt dialog --help']
-    });
+    dialog.outputHelp();
   });
 };

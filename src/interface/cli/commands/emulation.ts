@@ -94,9 +94,6 @@ export const registerEmulationCommands = (
     });
 
   emulation.action(async () => {
-    throw new AppError('Missing emulation subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt emulation --help']
-    });
+    emulation.outputHelp();
   });
 };

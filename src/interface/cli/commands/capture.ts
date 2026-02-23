@@ -110,9 +110,6 @@ export const registerCaptureCommands = (
     );
 
   capture.action(async () => {
-    throw new AppError('Missing capture subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt capture --help']
-    });
+    capture.outputHelp();
   });
 };

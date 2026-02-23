@@ -71,9 +71,6 @@ export const registerObserveCommands = (
     });
 
   observe.action(async () => {
-    throw new AppError('Missing observe subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt observe --help']
-    });
+    observe.outputHelp();
   });
 };

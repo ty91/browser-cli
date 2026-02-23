@@ -77,9 +77,6 @@ export const registerNetworkCommands = (
     });
 
   network.action(async () => {
-    throw new AppError('Missing network subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt network --help']
-    });
+    network.outputHelp();
   });
 };

@@ -1,8 +1,10 @@
-import { Command } from 'commander';
+import { Command, CommanderError } from 'commander';
 
 import { collectCallerContext } from './context.js';
 import { mapExitCode, toFailureEnvelope } from './errors.js';
 import { writeDiagnostic, writeResponse, type OutputFormat, type RenderableResponse } from './output.js';
+import { AppError } from '../../shared/errors/AppError.js';
+import { ERROR_CODE } from '../../shared/errors/ErrorCode.js';
 import { registerSessionCommands } from './commands/session.js';
 import { registerDaemonCommands } from './commands/daemon.js';
 import { registerPageCommands } from './commands/page.js';
@@ -36,6 +38,9 @@ type GlobalOptions = {
   home?: string;
 };
 
+const COMMANDER_HELP_CODES = new Set(['commander.helpDisplayed', 'commander.version']);
+const COMMANDER_MISSING_INPUT_CODES = new Set(['commander.missingArgument', 'commander.optionMissingArgument']);
+
 const normalizeEnvelope = (payload: unknown): RenderableResponse => {
   const maybeEnvelope = payload as Partial<RenderableResponse>;
 
@@ -58,6 +63,116 @@ const normalizeEnvelope = (payload: unknown): RenderableResponse => {
   };
 };
 
+const formatHelpText = (command: Command): string => {
+  const help = command.helpInformation();
+  return help.endsWith('\n') ? help : `${help}\n`;
+};
+
+const writeCommandHelp = (command: Command, stream: 'stdout' | 'stderr'): void => {
+  const help = formatHelpText(command);
+  if (stream === 'stdout') {
+    process.stdout.write(help);
+    return;
+  }
+
+  process.stderr.write(help);
+};
+
+const findDirectSubcommand = (command: Command, token: string): Command | null => {
+  for (const subcommand of command.commands) {
+    if (subcommand.name() === token || subcommand.aliases().includes(token)) {
+      return subcommand;
+    }
+  }
+
+  return null;
+};
+
+const resolveCommandPath = (
+  root: Command,
+  rawTokens: string[]
+): {
+  command: Command;
+  consumedAll: boolean;
+} => {
+  const tokens = [...rawTokens];
+  let current = root;
+  let consumed = 0;
+  let index = 0;
+
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (!token || token === '--') {
+      break;
+    }
+
+    if (token.startsWith('-')) {
+      const normalized = token.startsWith('--') ? token.split('=')[0] : token;
+      const matchedOption = current.options.find((option) => option.short === normalized || option.long === normalized);
+      index += 1;
+
+      if (matchedOption && !token.includes('=') && (matchedOption.required || matchedOption.optional) && index < tokens.length) {
+        index += 1;
+      }
+
+      continue;
+    }
+
+    const next = findDirectSubcommand(current, token);
+    if (!next) {
+      break;
+    }
+
+    current = next;
+    consumed += 1;
+    index += 1;
+  }
+
+  return {
+    command: current,
+    consumedAll: consumed === rawTokens.filter((token) => token && !token.startsWith('-')).length
+  };
+};
+
+const resolveHelpTarget = (program: Command, argv: string[], lastActionCommand: Command | null): Command => {
+  if (lastActionCommand) {
+    return lastActionCommand;
+  }
+
+  const tokens = argv.slice(2);
+  const resolved = resolveCommandPath(program, tokens);
+  return resolved.command;
+};
+
+const toValidationEnvelope = (message: string): RenderableResponse =>
+  toFailureEnvelope(
+    'local-error',
+    new AppError(message, {
+      code: ERROR_CODE.VALIDATION_ERROR
+    })
+  );
+
+const stripCommanderPrefix = (message: string): string => message.replace(/^error:\s*/i, '').trim();
+
+const applyCommanderParsingConfig = (command: Command): void => {
+  command.exitOverride();
+  command.configureOutput({
+    writeOut: (str) => {
+      process.stdout.write(str);
+    },
+    writeErr: () => {
+      // Commander parse errors are rendered by our own error handling in runProgram().
+    },
+    outputError: () => {
+      // Commander parse errors are rendered by our own error handling in runProgram().
+    }
+  });
+
+  for (const subcommand of command.commands) {
+    applyCommanderParsingConfig(subcommand);
+  }
+};
+
 export const createProgram = (): Command => {
   const program = new Command();
 
@@ -71,6 +186,7 @@ export const createProgram = (): Command => {
     .option('--home <path>', 'override browser home directory (default: ~/.browser)')
     .option('--describe', 'show schema/examples for command')
     .option('--debug', 'print diagnostics to stderr for errors');
+  program.addHelpCommand(false);
 
   const getContext = (): {
     caller: ReturnType<typeof collectCallerContext>;
@@ -120,6 +236,32 @@ export const createProgram = (): Command => {
   registerNetworkCommands(program, getContext, onResponse);
   registerEmulationCommands(program, getContext, onResponse);
   registerTraceCommands(program, getContext, onResponse);
+
+  program
+    .command('help [command...]')
+    .description('display help for command')
+    .action(async (commandPath: string[] = []) => {
+      if (commandPath.length === 0) {
+        writeCommandHelp(program, 'stdout');
+        return;
+      }
+
+      const current = commandPath.reduce<Command | null>((command, token) => {
+        if (!command) {
+          return null;
+        }
+        return findDirectSubcommand(command, token);
+      }, program);
+
+      if (!current) {
+        throw new AppError(`Unknown command path: ${commandPath.join(' ')}`, {
+          code: ERROR_CODE.VALIDATION_ERROR,
+          suggestions: ['Run: browser --help']
+        });
+      }
+
+      writeCommandHelp(current, 'stdout');
+    });
 
   program.command('errors').action(async () => {
     await onResponse(true, {
@@ -179,14 +321,7 @@ export const createProgram = (): Command => {
       return;
     }
 
-    await onResponse(true, {
-      id: 'root-help',
-      ok: true,
-      data: {
-        message: 'Run browser --help for available commands.'
-      },
-      meta: { durationMs: 0 }
-    });
+    writeCommandHelp(program, 'stdout');
   });
 
   return program;
@@ -194,12 +329,40 @@ export const createProgram = (): Command => {
 
 export const runProgram = async (argv: string[]): Promise<ProgramResult> => {
   const program = createProgram();
+  let lastActionCommand: Command | null = null;
+
+  applyCommanderParsingConfig(program);
+  program.hook('preAction', (_thisCommand, actionCommand) => {
+    lastActionCommand = actionCommand;
+  });
 
   try {
     await program.parseAsync(argv);
     return { exitCode: typeof process.exitCode === 'number' ? process.exitCode : 0 };
   } catch (error) {
     const options = program.opts<GlobalOptions>();
+
+    if (error instanceof CommanderError) {
+      if (COMMANDER_HELP_CODES.has(error.code)) {
+        return { exitCode: 0 };
+      }
+
+      const target = resolveHelpTarget(program, argv, lastActionCommand);
+
+      if (COMMANDER_MISSING_INPUT_CODES.has(error.code)) {
+        writeCommandHelp(target, 'stdout');
+        return { exitCode: 0 };
+      }
+
+      const envelope = toValidationEnvelope(stripCommanderPrefix(error.message));
+      if (options.debug) {
+        writeDiagnostic(error.stack ?? error.message);
+      }
+      writeResponse(envelope, options.output === 'text' ? 'text' : 'json');
+      writeCommandHelp(target, 'stderr');
+      return { exitCode: mapExitCode(ERROR_CODE.VALIDATION_ERROR) };
+    }
+
     const envelope = toFailureEnvelope('local-error', error);
 
     if (options.debug) {
@@ -207,6 +370,10 @@ export const runProgram = async (argv: string[]): Promise<ProgramResult> => {
     }
 
     writeResponse(envelope, options.output === 'text' ? 'text' : 'json');
+    if (envelope.error?.code === ERROR_CODE.VALIDATION_ERROR) {
+      const target = resolveHelpTarget(program, argv, lastActionCommand);
+      writeCommandHelp(target, 'stderr');
+    }
 
     return { exitCode: mapExitCode(envelope.error?.code ?? 'INTERNAL_ERROR') };
   }

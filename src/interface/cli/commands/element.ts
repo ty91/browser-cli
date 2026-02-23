@@ -162,9 +162,6 @@ export const registerElementCommands = (
     });
 
   element.action(async () => {
-    throw new AppError('Missing element subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt element --help']
-    });
+    element.outputHelp();
   });
 };

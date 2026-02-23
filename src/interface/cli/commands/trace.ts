@@ -66,9 +66,6 @@ export const registerTraceCommands = (
     });
 
   trace.action(async () => {
-    throw new AppError('Missing trace subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt trace --help']
-    });
+    trace.outputHelp();
   });
 };

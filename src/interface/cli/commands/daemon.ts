@@ -2,8 +2,6 @@ import type { Command } from 'commander';
 
 import { DaemonClient } from '../../../infrastructure/ipc/DaemonClient.js';
 import { IPC_OP } from '../../../infrastructure/ipc/protocol.js';
-import { AppError } from '../../../shared/errors/AppError.js';
-import { ERROR_CODE } from '../../../shared/errors/ErrorCode.js';
 import { toDaemonContext, type CommandContext } from './common.js';
 
 type DaemonStatusData = {
@@ -112,9 +110,6 @@ export const registerDaemonCommands = (
     });
 
   daemon.action(async () => {
-    throw new AppError('Missing daemon subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: browser daemon --help']
-    });
+    daemon.outputHelp();
   });
 };

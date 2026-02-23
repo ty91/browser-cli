@@ -42,9 +42,6 @@ export const registerRuntimeCommands = (
     });
 
   runtime.action(async () => {
-    throw new AppError('Missing runtime subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt runtime --help']
-    });
+    runtime.outputHelp();
   });
 };

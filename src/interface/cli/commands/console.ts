@@ -70,9 +70,6 @@ export const registerConsoleCommands = (
     });
 
   consoleCommand.action(async () => {
-    throw new AppError('Missing console subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: cdt console --help']
-    });
+    consoleCommand.outputHelp();
   });
 };

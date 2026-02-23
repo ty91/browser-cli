@@ -368,9 +368,6 @@ export const registerTabCommands = (
     });
 
   tab.action(async () => {
-    throw new AppError('Missing tab subcommand.', {
-      code: ERROR_CODE.VALIDATION_ERROR,
-      suggestions: ['Run: browser tab --help']
-    });
+    tab.outputHelp();
   });
 };
